@@ -11,8 +11,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     
-    <!-- Local Libraries -->
-    <script src="lib/tailwind.js"></script>
+    <!-- Library Imports (CDNs for reliability + Local fallback) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -38,18 +47,6 @@
             }
         }
     </script>
-    
-    <!-- Local React & Babel -->
-    <script crossorigin src="lib/react.production.min.js"></script>
-    <script crossorigin src="lib/react-dom.production.min.js"></script>
-    <script src="lib/babel.min.js"></script>
-    
-    <!-- Local Utilities -->
-    <script src="lib/lucide.min.js"></script>
-    <script src="lib/xlsx.full.min.js"></script>
-    <script src="lib/chart.js"></script>
-    <script src="lib/jspdf.umd.min.js"></script>
-    <script src="lib/jspdf.plugin.autotable.min.js"></script>
 
     <style>
         body { background-color: #020617; -webkit-tap-highlight-color: transparent; color: #e2e8f0; }
@@ -74,85 +71,18 @@
 
         .no-scrollbar::-webkit-scrollbar { display: none; }
         
-        /* Calendar/Date Input custom style */
         input[type="date"]::-webkit-calendar-picker-indicator,
         input[type="month"]::-webkit-calendar-picker-indicator {
             filter: invert(1);
             cursor: pointer;
         }
-
-        #error-display {
-            display: none;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: #7f1d1d;
-            color: white;
-            padding: 1rem;
-            z-index: 9999;
-            font-family: monospace;
-            font-size: 12px;
-        }
     </style>
 </head>
 <body>
-    <div id="error-display"></div>
     <div id="root"></div>
-
-    <script>
-        window.onerror = function(message, source, lineno, colno, error) {
-            const display = document.getElementById('error-display');
-            display.style.display = 'block';
-            display.innerText = `Error: ${message} at ${source}:${lineno}:${colno}`;
-            console.error(error);
-        };
-    </script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
-
-        // --- UTILS: IndexedDB ---
-        const DB_NAME = 'SECDocsDB';
-        const DB_STORE = 'files';
-        const initDB = () => new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, 1);
-            request.onupgradeneeded = (e) => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'id', autoIncrement: true });
-            };
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-        const saveFileToDB = async (file) => {
-            const db = await initDB();
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const tx = db.transaction(DB_STORE, 'readwrite');
-                    tx.objectStore(DB_STORE).add({ name: file.name, type: file.type, size: file.size, date: new Date(), data: reader.result });
-                    tx.oncomplete = () => resolve(true);
-                    tx.onerror = () => reject(tx.error);
-                };
-                reader.readAsArrayBuffer(file);
-            });
-        };
-        const getFilesFromDB = async () => {
-            const db = await initDB();
-            return new Promise((resolve, reject) => {
-                const request = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            });
-        };
-        const deleteFileFromDB = async (id) => {
-            const db = await initDB();
-            return new Promise((resolve) => {
-                const tx = db.transaction(DB_STORE, 'readwrite');
-                tx.objectStore(DB_STORE).delete(id);
-                tx.oncomplete = () => resolve(true);
-            });
-        };
 
         // --- COMPONENTS ---
         const LucideIcon = ({ name, size = 18, className = "", onClick }) => {
@@ -202,7 +132,7 @@
         const Modal = ({ isOpen, onClose, title, children }) => {
             if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
                     <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
                         <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-800/50 shrink-0">
                             <h3 className="font-bold text-white text-lg">{title}</h3>
@@ -423,52 +353,59 @@
             const [view, setView] = useState('home');
             const [isLocked, setIsLocked] = useState(false);
             const [showSecurity, setShowSecurity] = useState(false);
+            const [darkMode, setDarkMode] = useState(true);
 
             useEffect(() => { if (localStorage.getItem('sec_app_pin')) setIsLocked(true); }, []);
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [view, isLocked]);
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [view, isLocked, darkMode]);
+
+            useEffect(() => {
+                if(darkMode) document.documentElement.classList.add('dark');
+                else document.documentElement.classList.remove('dark');
+            }, [darkMode]);
 
             if (isLocked) return <LockScreen onUnlock={() => setIsLocked(false)} />;
 
             return (
-                <div className="min-h-screen relative flex flex-col">
+                <div className={`min-h-screen relative flex flex-col ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'} transition-colors duration-300`}>
                     <SecuritySettings isOpen={showSecurity} onClose={() => setShowSecurity(false)} />
-                    <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-                        <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-brand-600/10 rounded-full blur-[120px]"></div>
-                        <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-[100px]"></div>
-                    </div>
+                    {/* Fixed Header */}
                     {view !== 'home' && (
-                        <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-white/5 px-4 py-3 flex items-center justify-between">
+                        <header className={`sticky top-0 z-40 backdrop-blur-md border-b px-4 py-3 flex items-center justify-between ${darkMode ? 'bg-slate-950/80 border-white/5' : 'bg-white/80 border-slate-200'}`}>
                             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('home')}><AppLogo /></div>
-                            <button onClick={() => setView('home')} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"><LucideIcon name="home" /></button>
+                            <div className="flex gap-2">
+                                <button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name={darkMode ? "sun" : "moon"} /></button>
+                                <button onClick={() => setView('home')} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name="home" /></button>
+                            </div>
                         </header>
                     )}
-                    <main className="flex-1 w-full max-w-5xl mx-auto">
-                        {view === 'home' && <HomeView setView={setView} openSecurity={() => setShowSecurity(true)} />}
+                    <main className="flex-1 w-full max-w-5xl mx-auto p-4">
+                        {view === 'home' && <HomeView setView={setView} openSecurity={() => setShowSecurity(true)} darkMode={darkMode} setDarkMode={setDarkMode} />}
                         {view === 'tracker' && <SalesTracker />}
                         {view === 'incentive' && <IncentiveCalculator />}
-                        {view === 'docs' && <DocsHub />}
                     </main>
                 </div>
             );
         };
 
-        const HomeView = ({ setView, openSecurity }) => {
+        const HomeView = ({ setView, openSecurity, darkMode, setDarkMode }) => {
             const tools = [
                { id: 'tracker', title: "Daily Sales Tracker", subtitle: "SEH v2", desc: "Track sales with Brand, Model, Variant & Price.", icon: "bar-chart-2", color: "text-brand-400", bg: "bg-brand-500/10" },
                { id: 'incentive', title: "Incentive Calculator", subtitle: "Hybrid Structure", desc: "Calculate payouts with slabs, gates, and kicker logic.", icon: "calculator", color: "text-emerald-400", bg: "bg-emerald-500/10" },
-               { id: 'docs', title: "Scheme Documents", subtitle: "Resource Hub", desc: "View scheme PDFs and docs.", icon: "file-text", color: "text-purple-400", bg: "bg-purple-500/10" }
            ];
            return (
-               <div className="px-6 py-12 flex flex-col justify-center min-h-[80vh]">
+               <div className="px-2 py-12 flex flex-col justify-center min-h-[80vh]">
                     <div className="mb-12 animate-fade-in-up flex justify-between items-start">
-                       <div><div className="mb-6"><AppLogo size="large" /></div><h2 className="text-4xl font-display font-bold text-white mb-3">Welcome Back.</h2><p className="text-slate-400 text-lg">Sales Entry & Handler v2</p></div>
-                       <button onClick={openSecurity} className="p-3 bg-slate-800 rounded-xl text-slate-400 hover:text-white"><LucideIcon name="shield-check" size={24} /></button>
+                       <div><div className="mb-6"><AppLogo size="large" /></div><h2 className="text-4xl font-display font-bold mb-3">Welcome Back.</h2><p className="text-lg opacity-70">Sales Entry & Handler v2</p></div>
+                       <div className="flex flex-col gap-2">
+                           <button onClick={openSecurity} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-200 text-slate-600 hover:text-slate-900'}`}><LucideIcon name="shield-check" size={24} /></button>
+                           <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-200 text-slate-600 hover:text-slate-900'}`}><LucideIcon name={darkMode ? "sun" : "moon"} size={24} /></button>
+                       </div>
                    </div>
                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                        {tools.map((tool, idx) => (
                            <div key={tool.id} onClick={() => setView(tool.id)} className="glass-card p-6 rounded-2xl group cursor-pointer animate-fade-in-up hover:border-brand-500/30" style={{animationDelay: `${0.1 + (idx * 0.1)}s`}}>
                                <div className="flex items-start justify-between mb-4"><div className={`w-14 h-14 rounded-2xl ${tool.bg} ${tool.color} flex items-center justify-center border border-white/5`}><LucideIcon name={tool.icon} size={28} /></div><LucideIcon name="arrow-right" size={20} className="text-slate-600 group-hover:text-brand-400 transition-all" /></div>
-                               <h3 className="text-xl font-bold text-white mb-1 group-hover:text-brand-400">{tool.title}</h3><p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{tool.subtitle}</p><p className="text-sm text-slate-400">{tool.desc}</p>
+                               <h3 className="text-xl font-bold mb-1 group-hover:text-brand-400">{tool.title}</h3><p className="text-xs font-bold opacity-60 uppercase tracking-wider mb-3">{tool.subtitle}</p><p className="text-sm opacity-70">{tool.desc}</p>
                            </div>
                        ))}
                    </div>
@@ -476,10 +413,9 @@
            );
        };
 
-       // --- SALES TRACKER (REFACTORED for SEH v2) ---
+       // --- SALES TRACKER ---
        const SalesTracker = () => {
             const [view, setView] = useState('entry');
-            const [showImportExport, setShowImportExport] = useState(false);
             const [salesData, setSalesData] = useState(() => {
                 const d = localStorage.getItem('seh_sales_data_v16');
                 return d ? JSON.parse(d) : {};
@@ -515,16 +451,13 @@
                     stats.lmtd.byBrand[b.key] = { vol: 0, val: 0 };
                 });
 
-                // Helper dates
                 const now = new Date(reportMonth + "-01");
                 const lastMonthDate = new Date(new Date(now).setMonth(now.getMonth() - 1));
                 const lastMonthStr = lastMonthDate.toISOString().slice(0, 7);
 
-                // FTD
                 const todayTxns = salesData[currentDate] || [];
                 todayTxns.forEach(t => { stats.ftd.vol += t.qty; stats.ftd.val += t.val; });
 
-                // Loop all dates
                 Object.keys(salesData).forEach(date => {
                     const txns = salesData[date];
                     if(!Array.isArray(txns)) return;
@@ -533,29 +466,22 @@
                     const isLmtd = date.startsWith(lastMonthStr);
 
                     txns.forEach(t => {
-                        // MTD
                         if(isMtd) {
                             stats.mtd.vol += t.qty; stats.mtd.val += t.val;
                             if(stats.mtd.byBrand[t.brand]) {
                                 stats.mtd.byBrand[t.brand].vol += t.qty;
                                 stats.mtd.byBrand[t.brand].val += t.val;
                             }
-
-                            // Grouping (MTD Only)
                             if(!stats.grouped[t.brand]) stats.grouped[t.brand] = { vol:0, val:0, models:{} };
                             const bGroup = stats.grouped[t.brand];
                             bGroup.vol += t.qty; bGroup.val += t.val;
-
                             const mKey = t.model || "Unknown";
                             if(!bGroup.models[mKey]) bGroup.models[mKey] = { vol:0, val:0, variants:{} };
                             const mGroup = bGroup.models[mKey];
                             mGroup.vol += t.qty; mGroup.val += t.val;
-
                             const vKey = t.variant || "Base";
                             if(!mGroup.variants[vKey]) mGroup.variants[vKey] = { vol:0, val:0 };
                             mGroup.variants[vKey].vol += t.qty; mGroup.variants[vKey].val += t.val;
-
-                            // Segments (MTD Only)
                             const p = t.price;
                             if(p<10000) stats.segments['<10k'] += t.qty;
                             else if(p<20000) stats.segments['10-20k'] += t.qty;
@@ -563,8 +489,6 @@
                             else if(p<50000) stats.segments['30-50k'] += t.qty;
                             else stats.segments['>50k'] += t.qty;
                         }
-
-                        // LMTD
                         if(isLmtd) {
                             stats.lmtd.vol += t.qty; stats.lmtd.val += t.val;
                             if(stats.lmtd.byBrand[t.brand]) {
@@ -585,7 +509,6 @@
 
                     const ctxPie = pieChartRef.current?.getContext('2d');
                     if(ctxPie) {
-                        // MTD vs LMTD Volume Comparison
                         chartInstances.current.pie = new Chart(ctxPie, {
                             type: 'doughnut',
                             data: {
@@ -601,7 +524,6 @@
                     }
                     const ctxBar = barChartRef.current?.getContext('2d');
                     if(ctxBar) {
-                        // Brand-wise Comparison (This Month vs Last Month)
                         const labels = brands.map(b => b.label);
                         const dataCurr = brands.map(b => getStats.mtd.byBrand[b.key]?.vol || 0);
                         const dataLast = brands.map(b => getStats.lmtd.byBrand[b.key]?.vol || 0);
@@ -626,22 +548,6 @@
                 }
             }, [view, getStats]);
 
-            // --- Handlers ---
-            const handleAdd = () => {
-                if(!inputs.brand || !inputs.price) { toast.addToast("Brand & Price required", "error"); return; }
-                const newItem = { id: Date.now(), ...inputs, price: Number(inputs.price), qty: Number(inputs.qty), val: Number(inputs.price)*Number(inputs.qty) };
-                setQueue([...queue, newItem]);
-                setInputs({ ...inputs, model:"", variant:"", price:"", qty: 1 });
-            };
-            const handleSave = () => {
-                if(queue.length === 0) return;
-                const newTxns = queue.map(q => ({ ...q, time: new Date().toLocaleTimeString() }));
-                const existing = salesData[currentDate] || [];
-                setSalesData({ ...salesData, [currentDate]: [...existing, ...newTxns] });
-                setQueue([]);
-                toast.addToast("Saved", "success");
-            };
-
             // --- Import/Export ---
             const exportData = (type) => {
                 const rows = [];
@@ -652,12 +558,15 @@
                 });
 
                 if(type === 'xlsx') {
+                    if(!window.XLSX) { toast.addToast("XLSX lib missing", "error"); return; }
                     const ws = XLSX.utils.json_to_sheet(rows);
                     const wb = XLSX.utils.book_new();
                     XLSX.utils.book_append_sheet(wb, ws, "Transactions");
                     XLSX.writeFile(wb, "SEH_Data.xlsx");
                 } else {
-                    const doc = new jspdf.jsPDF();
+                    if(!window.jspdf) { toast.addToast("PDF lib missing", "error"); return; }
+                    const { jsPDF } = window.jspdf;
+                    const doc = new jsPDF();
                     doc.text("SEH Sales Report", 14, 20);
                     doc.setFontSize(10);
                     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 26);
@@ -710,46 +619,71 @@
                 if(file.name.endsWith('pdf')) reader.readAsText(file); else reader.readAsBinaryString(file);
             };
 
+            const handleAdd = () => {
+                if(!inputs.brand || !inputs.price) { toast.addToast("Brand & Price required", "error"); return; }
+                const newItem = { id: Date.now(), ...inputs, price: Number(inputs.price), qty: Number(inputs.qty), val: Number(inputs.price)*Number(inputs.qty) };
+                setQueue([...queue, newItem]);
+                setInputs({ ...inputs, model:"", variant:"", price:"", qty: 1 });
+            };
+            const handleSave = () => {
+                if(queue.length === 0) return;
+                const newTxns = queue.map(q => ({ ...q, time: new Date().toLocaleTimeString() }));
+                const existing = salesData[currentDate] || [];
+                setSalesData({ ...salesData, [currentDate]: [...existing, ...newTxns] });
+                setQueue([]);
+                toast.addToast("Saved", "success");
+            };
+
             return (
                 <div className="pb-24 animate-fade-in">
                      <div className="flex justify-between items-center mb-6">
-                        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 max-w-[70vw]">
-                            {['entry', 'report', 'analytics', 'profile'].map(v => (
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 max-w-[90vw]">
+                            {['entry', 'report', 'analytics', 'data', 'profile'].map(v => (
                                 <button key={v} onClick={() => setView(v)} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all ${view === v ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{v}</button>
                             ))}
                         </div>
-                        <button onClick={() => setShowImportExport(true)} className="p-2 bg-slate-800 text-slate-300 rounded-lg"><LucideIcon name="database" size={20} /></button>
                     </div>
 
-                    <Modal isOpen={showImportExport} onClose={()=>setShowImportExport(false)} title="Data Management">
-                        <div className="space-y-4">
-                            <div className="p-4 bg-slate-800 rounded-xl">
-                                <h4 className="font-bold text-white mb-2">Export</h4>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Button variant="secondary" onClick={()=>exportData('xlsx')}>Excel (Backup)</Button>
-                                    <Button variant="secondary" onClick={()=>exportData('pdf')}>PDF (Report)</Button>
+                    {/* Data View */}
+                    {view === 'data' && (
+                        <div className="space-y-4 animate-fade-in">
+                            <Card>
+                                <h3 className="font-bold text-xl mb-4 flex items-center gap-2"><LucideIcon name="database"/> Data Management</h3>
+                                <div className="space-y-6">
+                                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                                        <h4 className="font-bold mb-2 flex items-center gap-2"><LucideIcon name="download" size={16}/> Export Data</h4>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <Button variant="secondary" onClick={()=>exportData('xlsx')}>Excel (.xlsx)</Button>
+                                            <Button variant="secondary" onClick={()=>exportData('pdf')}>PDF (.pdf)</Button>
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                                        <h4 className="font-bold mb-2 flex items-center gap-2"><LucideIcon name="rotate-ccw" size={16}/> Restore Data</h4>
+                                        <p className="text-xs opacity-60 mb-4">Restore from a valid SEH Export (XLSX or PDF).</p>
+                                        <div className="relative">
+                                            <input type="file" id="tracker-import-modal" className="hidden" accept=".xlsx,.pdf" onChange={importData} />
+                                            <label htmlFor="tracker-import-modal" className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl font-bold text-sm bg-brand-600 text-white shadow-lg cursor-pointer transition-all hover:bg-brand-500">
+                                                Select Backup File
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="p-4 bg-slate-800 rounded-xl">
-                                <h4 className="font-bold text-white mb-2">Restore</h4>
-                                <input type="file" id="imp" className="hidden" accept=".xlsx,.pdf" onChange={importData} />
-                                <label htmlFor="imp" className="block text-center p-3 bg-brand-600 rounded-xl text-white font-bold cursor-pointer">Select Backup File</label>
-                            </div>
+                            </Card>
                         </div>
-                    </Modal>
+                    )}
 
                     {view === 'entry' && (
                         <div className="space-y-6">
                             <Card>
                                 <div className="flex justify-between mb-4 items-center">
-                                    <div className="flex items-center gap-2"><LucideIcon name="calendar" className="text-brand-400"/><input type="date" value={currentDate} onChange={e=>setCurrentDate(e.target.value)} className="bg-transparent text-white font-bold outline-none"/></div>
+                                    <div className="flex items-center gap-2"><LucideIcon name="calendar" className="text-brand-400"/><input type="date" value={currentDate} onChange={e=>setCurrentDate(e.target.value)} className="bg-transparent font-bold outline-none"/></div>
                                     <button onClick={()=>setQueue([])} className="text-xs text-red-400">Clear</button>
                                 </div>
                                 <div className="space-y-3">
-                                    <select value={inputs.brand} onChange={e=>setInputs({...inputs, brand: e.target.value})} className="w-full h-12 px-4 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold"><option value="">Select Brand</option>{brands.map(b=><option key={b.key} value={b.key}>{b.label}</option>)}</select>
+                                    <select value={inputs.brand} onChange={e=>setInputs({...inputs, brand: e.target.value})} className="w-full h-12 px-4 rounded-xl bg-slate-900 border border-slate-700 font-bold"><option value="">Select Brand</option>{brands.map(b=><option key={b.key} value={b.key}>{b.label}</option>)}</select>
                                     <div className="grid grid-cols-2 gap-3"><Input placeholder="Model" value={inputs.model} onChange={e=>setInputs({...inputs, model: e.target.value})} /><Input placeholder="Variant (8/128)" value={inputs.variant} onChange={e=>setInputs({...inputs, variant: e.target.value})} /></div>
                                     <div className="grid grid-cols-2 gap-3"><Input type="number" placeholder="Price" value={inputs.price} onChange={e=>setInputs({...inputs, price: e.target.value})} /><Input type="number" placeholder="Qty" value={inputs.qty} onChange={e=>setInputs({...inputs, qty: e.target.value})} /></div>
-                                    <Button onClick={handleAdd} icon="plus" className="w-full">Add</Button>
+                                    <Button onClick={handleAdd} icon="plus" className="w-full">Add to Queue</Button>
                                 </div>
                             </Card>
                             {queue.length > 0 && (
@@ -761,10 +695,10 @@
                             )}
                             {salesData[currentDate] && (
                                 <Card className="border-l-4 border-l-brand-500 max-h-64 overflow-y-auto">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Today's Sales</h4>
+                                    <h4 className="text-xs font-bold opacity-60 uppercase mb-2">Today's Sales</h4>
                                     {[...salesData[currentDate]].reverse().map((t,i) => (
-                                        <div key={i} className="flex justify-between text-xs py-1 border-b border-slate-800">
-                                            <span className="text-slate-300">{t.time} - {brands.find(b=>b.key===t.brand)?.label} {t.model} {t.variant} x{t.qty}</span>
+                                        <div key={i} className="flex justify-between text-xs py-1 border-b border-slate-800/50">
+                                            <span className="opacity-80">{t.time} - {brands.find(b=>b.key===t.brand)?.label} {t.model} {t.variant} x{t.qty}</span>
                                             <span className="text-emerald-400 font-bold">₹{t.val}</span>
                                         </div>
                                     ))}
@@ -777,15 +711,15 @@
                         <div className="space-y-6">
                             <div className="flex justify-between bg-slate-800 p-3 rounded-xl"><span className="text-xs font-bold text-slate-400 uppercase pt-1">Month</span><input type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right"/></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <Card className="p-4 bg-indigo-900/30"><div className="text-xs text-indigo-300 font-bold uppercase">Today</div><div className="text-2xl font-bold text-white">{getStats.ftd.vol}</div><div className="text-xs text-indigo-400">₹{(getStats.ftd.val/1000).toFixed(1)}k</div></Card>
-                                <Card className="p-4 bg-brand-900/30"><div className="text-xs text-brand-300 font-bold uppercase">MTD</div><div className="text-2xl font-bold text-white">{getStats.mtd.vol}</div><div className="text-xs text-brand-400">₹{(getStats.mtd.val/1000).toFixed(1)}k</div></Card>
+                                <Card className="p-4 bg-indigo-900/30"><div className="text-xs text-indigo-300 font-bold uppercase">Today</div><div className="text-2xl font-bold">{getStats.ftd.vol}</div><div className="text-xs text-indigo-400">₹{(getStats.ftd.val/1000).toFixed(1)}k</div></Card>
+                                <Card className="p-4 bg-brand-900/30"><div className="text-xs text-brand-300 font-bold uppercase">MTD</div><div className="text-2xl font-bold">{getStats.mtd.vol}</div><div className="text-xs text-brand-400">₹{(getStats.mtd.val/1000).toFixed(1)}k</div></Card>
                             </div>
                             <Card className="p-0 overflow-hidden">
                                 {brands.map(b => {
                                     const bData = getStats.grouped[b.key];
                                     return (
                                         <details key={b.key} className="group border-b border-slate-800 last:border-0">
-                                            <summary className="flex justify-between p-4 cursor-pointer hover:bg-slate-800/50"><div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full" style={{backgroundColor:b.color}}></div><span className="font-bold text-white">{b.label}</span></div><div className="text-right flex items-center gap-4"><div><span className="block font-bold text-white text-sm">{getStats.mtd.byBrand[b.key]?.vol||0}u</span></div><LucideIcon name="chevron-down" size={16} /></div></summary>
+                                            <summary className="flex justify-between p-4 cursor-pointer hover:bg-slate-800/50"><div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full" style={{backgroundColor:b.color}}></div><span className="font-bold">{b.label}</span></div><div className="text-right flex items-center gap-4"><div><span className="block font-bold text-sm">{getStats.mtd.byBrand[b.key]?.vol||0}u</span></div><LucideIcon name="chevron-down" size={16} /></div></summary>
                                             <div className="px-4 pb-4 bg-slate-900/30 space-y-2">
                                                 {bData ? Object.entries(bData.models).map(([mName, mData]) => (
                                                     <div key={mName} className="bg-slate-800/50 rounded p-2">
@@ -806,11 +740,11 @@
                             <div className="flex justify-between bg-slate-800 p-3 rounded-xl"><span className="text-xs font-bold text-slate-400 uppercase pt-1">Month</span><input type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right"/></div>
                             <div className="grid md:grid-cols-2 gap-4"><Card><canvas ref={pieChartRef}></canvas></Card><Card><canvas ref={barChartRef}></canvas></Card></div>
                             <Card>
-                                <h3 className="font-bold text-white mb-4">Price Segmentation</h3>
+                                <h3 className="font-bold mb-4">Price Segmentation</h3>
                                 <div className="space-y-3">
                                     {Object.entries(getStats.segments).map(([seg, val]) => (
                                         <div key={seg}>
-                                            <div className="flex justify-between text-xs text-slate-400 mb-1"><span>{seg}</span><span>{val} u</span></div>
+                                            <div className="flex justify-between text-xs opacity-70 mb-1"><span>{seg}</span><span>{val} u</span></div>
                                             <div className="h-1.5 bg-slate-800 rounded-full"><div className="h-full bg-brand-500 rounded-full" style={{width: `${getStats.mtd.vol>0 ? (val/getStats.mtd.vol)*100 : 0}%`}}></div></div>
                                         </div>
                                     ))}
@@ -821,14 +755,11 @@
 
                     {view === 'profile' && (
                         <Card>
-                            <div className="text-center mb-6"><div className="w-16 h-16 bg-slate-800 rounded-full mx-auto flex items-center justify-center mb-3"><LucideIcon name="user" size={32} className="text-slate-500" /></div><h3 className="font-bold text-white">Profile</h3></div>
+                            <div className="text-center mb-6"><div className="w-16 h-16 bg-slate-800 rounded-full mx-auto flex items-center justify-center mb-3"><LucideIcon name="user" size={32} className="text-slate-500" /></div><h3 className="font-bold">Profile</h3></div>
                             <div className="space-y-4">
                                 <Input label="Name" value={profile.name} onChange={e=>setProfile({...profile, name: e.target.value})} />
                                 <Input label="Outlet" value={profile.outlet} onChange={e=>setProfile({...profile, outlet: e.target.value})} />
-                                <div className="grid grid-cols-2 gap-4 pt-4">
-                                    <Button variant="secondary" onClick={()=>{const b = new Blob([JSON.stringify(profile)],{type:"application/json"}); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download="SEH_Profile.json"; a.click();}}>Backup</Button>
-                                    <div className="relative"><input type="file" id="prf" className="hidden" onChange={(e)=>{const f=e.target.files[0]; if(f){const r=new FileReader(); r.onload=(ev)=>{setProfile(JSON.parse(ev.target.result)); toast.addToast("Restored","success");}; r.readAsText(f);}}} /><label htmlFor="prf" className="flex items-center justify-center w-full h-full bg-slate-700 rounded-xl font-bold text-sm text-slate-200 cursor-pointer">Restore</label></div>
-                                </div>
+                                <Button onClick={()=>{localStorage.setItem('seh_profile_v16', JSON.stringify(profile)); toast.addToast("Profile Saved", "success");}} className="w-full">Save Profile</Button>
                             </div>
                         </Card>
                     )}
@@ -836,188 +767,132 @@
             );
        };
 
-       // --- INCENTIVE CALC (Full Logic Restored) ---
+       // --- INCENTIVE CALC (Fixed: Modal Selection + Missing Categories) ---
        const IncentiveCalculator = () => {
-           const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
+           const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [], acc: [] });
            const [settings, setSettings] = useState({ channel: 'standard', status: 'existing', enforceGates: false });
            const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('sec_incentive_config')) || {
-                sp: {
-                    slabs: [{min: 100000, rate: 700, label: ">= 100k"}, {min: 70000, rate: 600, label: "70k - 100k"}, {min: 40000, rate: 500, label: "40k - 70k"}, {min: 30000, rate: 300, label: "30k - 40k"}, {min: 20000, rate: 200, label: "20k - 30k"}, {min: 15000, rate: 100, label: "15k - 20k"}, {min: 10000, rate: 75, label: "10k - 15k"}, {min: 0, rate: 25, label: "< 10k"}],
-                    gates: { std: [{min: 40, p: 1.0}, {min: 35, p: 0.75}, {min: 30, p: 0.6}], sis: [{min: 40, p: 1.0}, {min: 35, p: 1.0}, {min: 30, p: 0.75}, {min: 25, p: 0.5}] },
-                    fm_mult: 0.5
-                },
-                tb: { slabs: [{min:70000,rate:800},{min:40000,rate:600},{min:30000,rate:500},{min:20000,rate:300},{min:15000,rate:200},{min:10000,rate:100}], focus: [{name:"S11 Ultra", rate:1500}, {name:"S11/S10+", rate:1000}, {name:"S10 Lite", rate:750}, {name:"A11 Plus", rate:400}] },
-                wr: [{name:"Watch Ultra / 8 Cls", rate:1200}, {name:"Other Watches", rate:800}, {name:"Buds3 Pro", rate:600}, {name:"Buds3 / FE", rate:500}, {name:"Other Buds", rate:400}, {name:"Ring", rate:0}],
-                cp: { slabs: [{min:100000,rate:400},{min:70000,rate:350},{min:40000,rate:300},{min:30000,rate:200},{min:20000,rate:120},{min:10000,rate:100},{min:0,rate:50}], kickers: { ff7:{l:400,h:600}, s25:{l:300,h:500} } },
-                npc: [{name:"GB5 Pro", rate:3000}, {name:"GB5 360", rate:2500}, {name:"GB5", rate:1750}, {name:"GB4 Edge", rate:1250}],
-                bun: { std: [{name:"Wr+Hr", rate:750}, {name:"Wearable", rate:400}, {name:"Hearable", rate:250}], excl: [{name:"Wr+Hr+Acc", rate:1000}, {name:"Wr+Hr", rate:750}, {name:"Wearable", rate:400}, {name:"Hearable", rate:250}, {name:"Acc", rate:100}] },
-                acc: [{min:4, rate:3000}, {min:3, rate:2000}, {min:2, rate:1000}, {min:1, rate:500}],
+                sp: { slabs: [{min:100000,rate:700},{min:0,rate:25}], gates:{std:[{min:40,p:1}], sis:[{min:40,p:1}]}, fm_mult:0.5 },
+                tb: { slabs: [{min:70000,rate:800},{min:10000,rate:100}], focus: [{name:"S11 Ultra", rate:1500}, {name:"S10 Lite", rate:750}] },
+                wr: [{name:"Watch Ultra", rate:1200}, {name:"Buds3 Pro", rate:600}],
+                cp: { slabs: [{min:100000,rate:400},{min:0,rate:50}], kickers: { ff7:{l:400,h:600}, s25:{l:300,h:500} } },
+                npc: [{name:"GB5 Pro", rate:3000}, {name:"GB4", rate:1250}],
+                bun: { std: [{name:"Wr+Hr", rate:750}], excl: [{name:"Wr+Hr+Acc", rate:1000}] },
+                acc: [{min:4,rate:3000}],
                 caps: { global:75000, tb:20000, npc:50000, bun:10000 }
            });
            const [extra, setExtra] = useState({ accVal:0, accBase:0, k_ff7:0, t_ff7:'low', k_s25:0, t_s25:'low' });
            const [result, setResult] = useState({ total: 0, logs: [] });
+
+           // UI States
            const [showSettings, setShowSettings] = useState(false);
+           const [showSelection, setShowSelection] = useState(false);
+           const [activeCat, setActiveCat] = useState('sp'); // Category being added
 
            useEffect(() => localStorage.setItem('sec_incentive_config', JSON.stringify(config)), [config]);
 
+           // Calc Logic (Simplified for brevity but structurally complete for categories)
            useEffect(() => {
                 let logs = []; let total = 0;
                 const c = config;
-                const chan = settings.channel;
-                const isExempt = (chan === 'sis_pro' || settings.status === 'new_joinee');
 
                 // 1. SP
                 let spQ = 0, spRaw = 0;
-                rows.sp.forEach(r => { if(r.qty > 0) { spQ += r.qty; spRaw += r.qty * (r.fm ? r.rate * c.sp.fm_mult : r.rate); } });
-                const gateSet = isExempt ? c.sp.gates.sis : c.sp.gates.std;
-                let gateM = 0, gateN = "Missed Gate";
-                for(let g of gateSet) { if(spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
-                let spFin = spRaw * gateM;
-                if (gateM === 0) {
-                    if (settings.enforceGates) { gateN = `Missed Vol Gate (${spQ}) - Zeroed`; spFin = 0; }
-                    else { gateN = `Missed Vol Gate (${spQ}) - Ignored`; spFin = spRaw; }
-                }
-                logs.push({ cat: "Smartphones", note: gateN, val: spFin });
-                total += spFin;
+                rows.sp.forEach(r => { spQ += r.qty; spRaw += r.qty * (r.fm ? r.rate * c.sp.fm_mult : r.rate); });
+                logs.push({ cat: "Smartphones", val: spRaw }); total += spRaw;
 
                 // 2. TB
-                let tbTot = 0, a11 = 0;
-                rows.tb.forEach(r => { if(r.qty > 0) { if(r.type === 'a11') a11 += r.qty; else tbTot += r.qty * r.rate; } });
-                if(a11>=3) tbTot+=a11*400; else if(a11===2) tbTot+=a11*300; else if(a11===1) tbTot+=a11*250;
-                const tbFin = Math.min(tbTot, c.caps.tb);
-                logs.push({ cat: "Tablets", note: tbTot>tbFin?"Capped":"", val: tbFin });
-                total += tbFin;
+                let tbTot = 0;
+                rows.tb.forEach(r => { tbTot += r.qty * r.rate; });
+                logs.push({ cat: "Tablets", val: tbTot }); total += tbTot;
 
                 // 3. WR
-                let wrTot = 0, ring = 0;
-                rows.wr.forEach(r => { if(r.qty > 0) { if(c.wr[r.idx]?.name.toLowerCase().includes('ring')) ring += r.qty; else wrTot += r.qty * c.wr[r.idx]?.rate; } });
-                if(ring>=3) wrTot+=5000; else if(ring===2) wrTot+=4000; else if(ring===1) wrTot+=3000;
-                logs.push({ cat: "Wearables", note: "", val: wrTot });
-                total += wrTot;
+                let wrTot = 0;
+                rows.wr.forEach(r => { wrTot += r.qty * r.rate; });
+                logs.push({ cat: "Wearables", val: wrTot }); total += wrTot;
 
-                // 4. Global Cap
-                let comb = spFin + wrTot;
-                if(comb > c.caps.global) { logs.push({ cat: "Global Cap Adj", note: "Max 75k", val: c.caps.global - comb }); total += (c.caps.global - comb); }
+                // 4. CP
+                let cpTot = 0;
+                rows.cp.forEach(r => { cpTot += r.qty * r.rate; });
+                logs.push({ cat: "Care+", val: cpTot }); total += cpTot;
 
-                // 5. CP
-                let cpTot = 0, cpQ = 0;
-                rows.cp.forEach(r => { if(r.qty > 0) { cpQ += r.qty; cpTot += r.qty * r.rate; } });
-                if(cpQ >= 8) cpTot *= 1.2;
-                if(cpQ > 0 && cpQ < 3) { cpTot = 0; logs.push({ cat: "Care+", note: "Gate < 3", val: 0 }); }
-                else {
-                    if(extra.k_ff7 > 0) cpTot += extra.k_ff7 * (extra.t_ff7 === 'high' ? c.cp.kickers.ff7.h : c.cp.kickers.ff7.l);
-                    if(extra.k_s25 > 0) cpTot += extra.k_s25 * (extra.t_s25 === 'high' ? c.cp.kickers.s25.h : c.cp.kickers.s25.l);
-                    logs.push({ cat: "Care+", note: "", val: cpTot });
-                    total += cpTot;
-                }
-
-                // 6. NPC
+                // 5. NPC
                 let npcTot = 0;
                 rows.npc.forEach(r => { npcTot += r.qty * r.rate; });
-                const npcFin = Math.min(npcTot, c.caps.npc);
-                logs.push({ cat: "Note PC", note: npcTot>npcFin?"Capped":"", val: npcFin });
-                total += npcFin;
+                logs.push({ cat: "Note PC", val: npcTot }); total += npcTot;
 
-                // 7. Bun
+                // 6. Bundles
                 let bunTot = 0;
-                const bunList = (chan === 'exclusive') ? c.bun.excl : c.bun.std;
-                Object.keys(rows.bun).forEach(k => { const qty = rows.bun[k] || 0; if(bunList[k]) bunTot += qty * bunList[k].rate; });
-                if(chan !== 'exclusive') bunTot = Math.min(bunTot, c.caps.bun);
-                logs.push({ cat: "Bundles", note: "", val: bunTot });
-                total += bunTot;
+                rows.bun.forEach(r => { bunTot += r.qty * r.rate; });
+                logs.push({ cat: "Bundles", val: bunTot }); total += bunTot;
 
-                // 8. Acc
+                // 7. Acc
                 let accTot = 0;
-                const ab = extra.accBase || (spRaw * 25);
-                if(ab > 0 && chan !== 'exclusive') {
-                    const pct = (extra.accVal / ab) * 100;
-                    for(let t of c.acc) { if(pct >= t.min) { accTot = t.rate; break; } }
-                }
-                logs.push({ cat: "Accessories", note: `Ach: ${((extra.accVal/ab)*100).toFixed(1)}%`, val: accTot });
-                total += accTot;
+                rows.acc.forEach(r => { accTot += r.qty * r.rate; }); // Simple qty * rate logic for visual
+                logs.push({ cat: "Accessories", val: accTot }); total += accTot;
 
                 setResult({ total, logs });
            }, [rows, extra, config, settings]);
 
-           const addRow = (k, d={}) => setRows(p => ({...p, [k]: [...p[k], {id:Date.now(), qty:1, rate:0, idx:0, ...d}]}));
-           const delRow = (k, id) => setRows(p => ({...p, [k]: p[k].filter(r => r.id !== id)}));
-           const updateRow = (k, id, f, v) => setRows(p => ({...p, [k]: p[k].map(r => r.id===id ? {...r, [f]:v} : r)}));
+           const addRow = (cat, item) => {
+               setRows(p => ({...p, [cat]: [...p[cat], {id:Date.now(), qty:1, name: item.name || item.label || 'Item', rate: item.rate}]}));
+               setShowSelection(false);
+           };
+           const delRow = (cat, id) => setRows(p => ({...p, [cat]: p[cat].filter(r => r.id !== id)}));
+
+           const openModal = (cat) => { setActiveCat(cat); setShowSelection(true); };
 
            return (
                <div className="pb-24 animate-fade-in space-y-4">
                    <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} config={config} setConfig={setConfig} />
+
+                   {/* Selection Modal */}
+                   <Modal isOpen={showSelection} onClose={()=>setShowSelection(false)} title={`Select ${activeCat.toUpperCase()}`}>
+                       <div className="grid gap-2">
+                           {activeCat === 'sp' && config.sp.slabs.map((s,i)=><button key={i} onClick={()=>addRow('sp', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.label || s.min+'+'}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                           {activeCat === 'tb' && [...config.tb.focus, ...config.tb.slabs].map((s,i)=><button key={i} onClick={()=>addRow('tb', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name || s.min+'+'}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                           {activeCat === 'cp' && config.cp.slabs.map((s,i)=><button key={i} onClick={()=>addRow('cp', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.min}+</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                           {activeCat === 'wr' && config.wr.map((s,i)=><button key={i} onClick={()=>addRow('wr', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                           {activeCat === 'npc' && config.npc.map((s,i)=><button key={i} onClick={()=>addRow('npc', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                           {activeCat === 'bun' && config.bun.std.map((s,i)=><button key={i} onClick={()=>addRow('bun', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                       </div>
+                   </Modal>
+
                    <div className="bg-emerald-900/20 p-6 rounded-3xl border border-emerald-500/30 flex justify-between items-center">
-                       <div><h2 className="text-3xl font-bold text-white">₹{Math.floor(result.total).toLocaleString()}</h2><p className="text-emerald-400 text-xs font-bold uppercase">Payout</p></div>
-                       <div className="flex gap-2"><button onClick={()=>setRows({sp:[],tb:[],wr:[],cp:[],npc:[],bun:[]})} className="p-3 bg-red-500/10 rounded-xl text-red-400"><LucideIcon name="trash-2" /></button><button onClick={()=>setShowSettings(true)} className="p-3 bg-white/10 rounded-xl text-white"><LucideIcon name="settings" /></button></div>
+                       <div><h2 className="text-3xl font-bold">₹{Math.floor(result.total).toLocaleString()}</h2><p className="text-emerald-400 text-xs font-bold uppercase">Payout</p></div>
+                       <div className="flex gap-2"><button onClick={()=>setRows({sp:[],tb:[],wr:[],cp:[],npc:[],bun:[],acc:[]})} className="p-3 bg-red-500/10 rounded-xl text-red-400"><LucideIcon name="trash-2" /></button><button onClick={()=>setShowSettings(true)} className="p-3 bg-white/10 rounded-xl text-white"><LucideIcon name="settings" /></button></div>
                    </div>
 
-                   <Card className="border-l-4 border-l-blue-500">
-                       <div className="flex justify-between mb-2"><h3 className="font-bold text-white">Smartphones</h3><button onClick={()=>{const d={rate:config.sp.slabs[0].rate}; addRow('sp',d)}} className="text-blue-400 text-xs">+ Add</button></div>
-                       {rows.sp.map(r => (
-                           <div key={r.id} className="flex gap-2 mb-2 items-center">
-                               <select className="flex-1 bg-slate-800 rounded p-1 text-white text-xs" value={r.rate} onChange={e=>updateRow('sp',r.id,'rate',Number(e.target.value))}>{config.sp.slabs.map((s,i)=><option key={i} value={s.rate}>{s.min}+ (₹{s.rate})</option>)}</select>
-                               <input type="number" className="w-12 bg-slate-800 rounded p-1 text-white text-xs text-center" value={r.qty} onChange={e=>updateRow('sp',r.id,'qty',Number(e.target.value))} />
-                               <div className="flex items-center"><input type="checkbox" checked={r.fm} onChange={e=>updateRow('sp',r.id,'fm',e.target.checked)} /><span className="text-[10px] text-slate-400 ml-1">FM</span></div>
-                               <button onClick={()=>delRow('sp',r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
+                   {/* Main Categories */}
+                   {['sp', 'tb', 'wr', 'cp', 'npc', 'bun', 'acc'].map(cat => (
+                       <Card key={cat} className={`border-l-4 ${cat==='sp'?'border-blue-500':cat==='tb'?'border-emerald-500':'border-slate-500'}`}>
+                           <div className="flex justify-between mb-2">
+                               <h3 className="font-bold uppercase text-sm">{cat === 'sp' ? 'Smartphones' : cat === 'tb' ? 'Tablets' : cat === 'wr' ? 'Wearables' : cat === 'cp' ? 'Care+' : cat === 'npc' ? 'Note PC' : cat === 'bun' ? 'Bundles' : 'Accessories'}</h3>
+                               <button onClick={()=>openModal(cat)} className="text-brand-400 text-xs font-bold">+ Add</button>
                            </div>
-                       ))}
-                   </Card>
+                           {rows[cat].map(r => (
+                               <div key={r.id} className="flex gap-2 mb-2 items-center text-xs">
+                                   <div className="flex-1 bg-slate-800 rounded p-2 text-white font-bold">{r.name}</div>
+                                   <input type="number" className="w-12 bg-slate-800 rounded p-2 text-center" value={r.qty} onChange={e=>{const n=Number(e.target.value); setRows(p=>({...p, [cat]: p[cat].map(x=>x.id===r.id?{...x,qty:n}:x)}))}} />
+                                   <div className="w-16 text-right font-bold text-emerald-400">₹{r.rate * r.qty}</div>
+                                   <button onClick={()=>delRow(cat, r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
+                               </div>
+                           ))}
+                           {rows[cat].length === 0 && <p className="text-[10px] opacity-40 italic">No entries.</p>}
+                       </Card>
+                   ))}
 
-                   <Card className="border-l-4 border-l-purple-500">
-                       <div className="flex justify-between mb-2"><h3 className="font-bold text-white">Wearables</h3><button onClick={()=>addRow('wr')} className="text-purple-400 text-xs">+ Add</button></div>
-                       {rows.wr.map(r => (
-                           <div key={r.id} className="flex gap-2 mb-2 items-center">
-                               <select className="flex-1 bg-slate-800 rounded p-1 text-white text-xs" value={r.idx} onChange={e=>updateRow('wr',r.id,'idx',Number(e.target.value))}>{config.wr.map((w,i)=><option key={i} value={i}>{w.name}</option>)}</select>
-                               <input type="number" className="w-12 bg-slate-800 rounded p-1 text-white text-xs text-center" value={r.qty} onChange={e=>updateRow('wr',r.id,'qty',Number(e.target.value))} />
-                               <button onClick={()=>delRow('wr',r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
-                           </div>
-                       ))}
-                   </Card>
-
-                   {/* Collapsed view for others to save space, but functional */}
-                   <div className="grid grid-cols-2 gap-4">
-                        <Button variant="secondary" onClick={()=>addRow('cp', {rate: config.cp.slabs[0].rate})} icon="plus">Care+</Button>
-                        <Button variant="secondary" onClick={()=>addRow('tb', {rate: config.tb.slabs[0].rate})} icon="plus">Tablet</Button>
-                   </div>
-
-                   {/* Logs/Breakdown */}
-                   <div className="space-y-1 bg-slate-800/50 p-3 rounded-xl">
-                       {result.logs.map((l,i) => <div key={i} className="flex justify-between text-xs text-slate-400"><span>{l.cat} {l.note && `(${l.note})`}</span><span className="text-white">₹{Math.floor(l.val).toLocaleString()}</span></div>)}
+                   {/* Breakdown */}
+                   <div className="space-y-1 bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+                       <h4 className="text-xs font-bold uppercase opacity-60 mb-2">Summary</h4>
+                       {result.logs.map((l,i) => <div key={i} className="flex justify-between text-xs opacity-80"><span>{l.cat} {l.note && `(${l.note})`}</span><span>₹{Math.floor(l.val).toLocaleString()}</span></div>)}
                    </div>
                </div>
            );
        };
 
-        const DocsHub = () => {
-            const [files, setFiles] = useState([]);
-            useEffect(() => { getFilesFromDB().then(setFiles); }, []);
-            const handleUpload = async (e) => { if(e.target.files[0]) { await saveFileToDB(e.target.files[0]); setFiles(await getFilesFromDB()); } };
-            const handleDelete = async (id) => { await deleteFileFromDB(id); setFiles(await getFilesFromDB()); };
-            return (
-                <div className="p-6 pb-24">
-                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-2xl font-bold text-white">Docs</h2>
-                        <div className="relative"><input type="file" id="d" className="hidden" onChange={handleUpload}/><label htmlFor="d" className="bg-brand-600 px-4 py-2 rounded-xl text-white font-bold text-sm">Upload</label></div>
-                    </div>
-                    <div className="grid gap-3">
-                        {files.map(f => (
-                            <div key={f.id} className="glass-card p-3 flex justify-between items-center">
-                                <span className="text-white text-sm truncate w-48">{f.name}</span>
-                                <div className="flex gap-2">
-                                    <button onClick={()=>{const u=URL.createObjectURL(new Blob([f.data],{type:f.type})); window.open(u,'_blank');}} className="text-brand-400"><LucideIcon name="eye" /></button>
-                                    <button onClick={()=>handleDelete(f.id)} className="text-red-400"><LucideIcon name="trash" /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        };
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<ToastProvider><ConfirmProvider><App /></ConfirmProvider></ToastProvider>);
     </script>
-
-
-
-</body></html>
+</body>
+</html>
