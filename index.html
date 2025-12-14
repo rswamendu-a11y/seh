@@ -81,97 +81,91 @@
             cursor: pointer;
         }
 
-        /* Nav fix for Mobile */
-        @media (max-width: 768px) {
-            .mobile-hide-text { display: none; }
-            .mobile-flex-col { flex-direction: column; }
+        #error-display {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: #7f1d1d;
+            color: white;
+            padding: 1rem;
+            z-index: 9999;
+            font-family: monospace;
+            font-size: 12px;
         }
     </style>
 </head>
 <body>
+    <div id="error-display"></div>
     <div id="root"></div>
+
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const display = document.getElementById('error-display');
+            display.style.display = 'block';
+            display.innerText = `Error: ${message} at ${source}:${lineno}:${colno}`;
+            console.error(error);
+        };
+    </script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        // --- UTILS: IndexedDB for Docs (No Changes Required) ---
+        // --- UTILS: IndexedDB ---
         const DB_NAME = 'SECDocsDB';
         const DB_STORE = 'files';
-        
-        const initDB = () => {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open(DB_NAME, 1);
-                request.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains(DB_STORE)) {
-                        db.createObjectStore(DB_STORE, { keyPath: 'id', autoIncrement: true });
-                    }
-                };
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            });
-        };
-
+        const initDB = () => new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'id', autoIncrement: true });
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
         const saveFileToDB = async (file) => {
             const db = await initDB();
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
                     const tx = db.transaction(DB_STORE, 'readwrite');
-                    const store = tx.objectStore(DB_STORE);
-                    const item = {
-                        name: file.name,
-                        type: file.type,
-                        size: file.size,
-                        date: new Date(),
-                        data: reader.result // ArrayBuffer
-                    };
-                    store.add(item);
+                    tx.objectStore(DB_STORE).add({ name: file.name, type: file.type, size: file.size, date: new Date(), data: reader.result });
                     tx.oncomplete = () => resolve(true);
                     tx.onerror = () => reject(tx.error);
                 };
                 reader.readAsArrayBuffer(file);
             });
         };
-
         const getFilesFromDB = async () => {
             const db = await initDB();
             return new Promise((resolve, reject) => {
-                const tx = db.transaction(DB_STORE, 'readonly');
-                const store = tx.objectStore(DB_STORE);
-                const request = store.getAll();
+                const request = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
                 request.onsuccess = () => resolve(request.result);
                 request.onerror = () => reject(request.error);
             });
         };
-
         const deleteFileFromDB = async (id) => {
             const db = await initDB();
-            return new Promise((resolve, reject) => {
+            return new Promise((resolve) => {
                 const tx = db.transaction(DB_STORE, 'readwrite');
-                const store = tx.objectStore(DB_STORE);
-                store.delete(id);
+                tx.objectStore(DB_STORE).delete(id);
                 tx.oncomplete = () => resolve(true);
             });
         };
 
         // --- COMPONENTS ---
-        
         const LucideIcon = ({ name, size = 18, className = "", onClick }) => {
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [name]);
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
             return <i data-lucide={name} onClick={onClick} style={{ width: size, height: size }} className={className}></i>;
         };
 
-        // --- LOGO COMPONENT ---
         const AppLogo = ({ size = "normal" }) => {
             const dim = size === "large" ? 48 : 32;
             const fontSize = size === "large" ? "text-2xl" : "text-lg";
-
             return (
                 <div className="flex items-center gap-2">
-                    <div className={`relative flex items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 shadow-lg shadow-brand-500/20`} style={{width: dim, height: dim}}>
+                    <div className="relative flex items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 shadow-lg shadow-brand-500/20" style={{width: dim, height: dim}}>
                         <svg width={dim*0.6} height={dim*0.6} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                         </svg>
@@ -184,73 +178,103 @@
             );
         };
 
-        const LockScreen = ({ onUnlock }) => {
-            const [pin, setPin] = useState("");
-            const [error, setError] = useState(false);
+        const Card = ({ children, className = "" }) => <div className={`glass-card rounded-2xl p-5 ${className}`}>{children}</div>;
 
-            const handleUnlock = () => {
-                const stored = localStorage.getItem('sec_app_pin');
-                if (stored && pin === stored) {
-                    onUnlock();
-                } else {
-                    setError(true);
-                    setPin("");
-                    setTimeout(() => setError(false), 1000);
-                }
+        const Button = ({ children, onClick, variant = 'primary', className = "", icon = null }) => {
+            const base = "px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2";
+            const variants = {
+                primary: "bg-brand-600 text-white shadow-lg shadow-brand-900/20 hover:bg-brand-500",
+                secondary: "bg-slate-700 text-slate-200 hover:bg-slate-600",
+                outline: "border border-slate-600 text-slate-400 hover:bg-slate-800 hover:text-white",
+                danger: "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
             };
+            return <button onClick={onClick} className={`${base} ${variants[variant]} ${className}`}>{icon && <LucideIcon name={icon} size={18} />}{children}</button>;
+        };
 
+        const Input = ({ label, value, onChange, type = "text", placeholder = "", className = "" }) => (
+            <div className={`w-full ${className}`}>
+                {label && <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block ml-1">{label}</label>}
+                <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+                    className="w-full h-12 px-4 rounded-xl bg-slate-800/50 border border-slate-700 text-sm font-bold text-white focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/50 placeholder-slate-500 transition-all" />
+            </div>
+        );
+
+        const Modal = ({ isOpen, onClose, title, children }) => {
+            if (!isOpen) return null;
             return (
-                <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-4 animate-fade-in">
-                    <div className="mb-8 scale-150">
-                        <AppLogo size="large" />
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-800/50 shrink-0">
+                            <h3 className="font-bold text-white text-lg">{title}</h3>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"><LucideIcon name="x" /></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">{children}</div>
                     </div>
-                    <h2 className="text-xl font-bold text-white mb-2">Security Lock</h2>
-                    <p className="text-slate-400 text-sm mb-8">Enter your PIN to access SEH.</p>
-                    
-                    <div className="flex gap-4 mb-8">
-                        {[0, 1, 2, 3].map((i) => (
-                            <div key={i} className={`w-4 h-4 rounded-full transition-all duration-300 ${pin.length > i ? 'bg-brand-500 scale-110 shadow-[0_0_10px_rgba(14,165,233,0.5)]' : 'bg-slate-800'}`}></div>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'Go'].map(n => (
-                            <button 
-                                key={n}
-                                onClick={() => {
-                                    if(n === 'C') setPin(pin.slice(0, -1));
-                                    else if(n === 'Go') handleUnlock();
-                                    else if(pin.length < 4) setPin(pin + n);
-                                }}
-                                className={`h-16 rounded-2xl font-bold text-xl transition-all active:scale-95 flex items-center justify-center ${
-                                    n === 'Go' ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 
-                                    n === 'C' ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' : 
-                                    'bg-slate-800 text-white hover:bg-slate-700'
-                                }`}
-                            >
-                                {n === 'Go' ? <LucideIcon name="arrow-right" /> : n === 'C' ? <LucideIcon name="delete" /> : n}
-                            </button>
-                        ))}
-                    </div>
-                    {error && <p className="text-red-500 mt-6 animate-bounce font-bold">Incorrect PIN</p>}
                 </div>
+            );
+        };
+
+        const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, isDanger = false }) => {
+            if (!isOpen) return null;
+            return (
+                <Modal isOpen={isOpen} onClose={onClose} title={title}>
+                    <div className="space-y-4">
+                        <p className="text-slate-300 text-sm">{message}</p>
+                        <div className="flex gap-3 justify-end">
+                            <Button onClick={onClose} variant="secondary">Cancel</Button>
+                            <Button onClick={onConfirm} variant={isDanger ? "danger" : "primary"}>Confirm</Button>
+                        </div>
+                    </div>
+                </Modal>
+            );
+        };
+
+        // --- GLOBAL CONTEXTS ---
+        const ToastContext = React.createContext();
+        const useToast = () => React.useContext(ToastContext);
+        const ToastProvider = ({ children }) => {
+            const [toasts, setToasts] = useState([]);
+            const addToast = (message, type = 'info') => {
+                const id = Date.now() + Math.random();
+                setToasts(prev => [...prev, { id, message, type }]);
+                setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+            };
+            return (
+                <ToastContext.Provider value={{ addToast }}>
+                    {children}
+                    <div className="fixed bottom-4 right-4 z-[110] flex flex-col gap-2">
+                        {toasts.map(t => (
+                            <div key={t.id} className={`min-w-[200px] p-4 rounded-xl shadow-lg border backdrop-blur-md animate-fade-in-up flex items-center gap-3 ${
+                                t.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                                t.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                                'bg-slate-800/90 border-slate-700 text-white' }`}>
+                                <LucideIcon name={t.type === 'error' ? 'alert-circle' : t.type === 'success' ? 'check-circle' : 'info'} size={20} />
+                                <span className="text-sm font-bold">{t.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                </ToastContext.Provider>
+            );
+        };
+
+        const ConfirmContext = React.createContext();
+        const useConfirm = () => React.useContext(ConfirmContext);
+        const ConfirmProvider = ({ children }) => {
+            const [state, setState] = useState({ isOpen: false, title: "", message: "", onConfirm: null, isDanger: false });
+            const confirm = (opts) => setState({ ...opts, isOpen: true });
+            return (
+                <ConfirmContext.Provider value={confirm}>
+                    {children}
+                    <ConfirmModal isOpen={state.isOpen} onClose={() => setState({ ...state, isOpen: false })} onConfirm={() => { state.onConfirm && state.onConfirm(); setState({ ...state, isOpen: false }); }} title={state.title} message={state.message} isDanger={state.isDanger} />
+                </ConfirmContext.Provider>
             );
         };
 
         // --- SETTINGS GUI ---
         const SettingsModal = ({ isOpen, onClose, config, setConfig }) => {
-            const [section, setSection] = useState('sp'); // sp, tb, brands, etc.
+            const [section, setSection] = useState('sp');
             const [tempConfig, setTempConfig] = useState(null);
-
-            useEffect(() => {
-                if(isOpen) setTempConfig(JSON.parse(JSON.stringify(config)));
-            }, [isOpen, config]);
-
-            const handleSave = () => {
-                setConfig(tempConfig);
-                onClose();
-            };
-
+            useEffect(() => { if(isOpen) setTempConfig(JSON.parse(JSON.stringify(config))); }, [isOpen, config]);
             if(!isOpen || !tempConfig) return null;
 
             const renderSlabEditor = (key, label) => (
@@ -259,7 +283,7 @@
                     {tempConfig[key].slabs.map((slab, idx) => (
                         <div key={idx} className="flex gap-2 items-center bg-slate-800/50 p-2 rounded-lg">
                             <div className="flex-1">
-                                <label className="text-[10px] text-slate-400 block">Min Vol/Price</label>
+                                <label className="text-[10px] text-slate-400 block">Min</label>
                                 <input type="number" value={slab.min} onChange={(e) => {
                                     const newSlabs = [...tempConfig[key].slabs];
                                     newSlabs[idx].min = Number(e.target.value);
@@ -267,7 +291,7 @@
                                 }} className="bg-transparent text-white font-bold w-full outline-none text-xs"/>
                             </div>
                             <div className="flex-1">
-                                <label className="text-[10px] text-slate-400 block">Rate (₹)</label>
+                                <label className="text-[10px] text-slate-400 block">Rate</label>
                                 <input type="number" value={slab.rate} onChange={(e) => {
                                     const newSlabs = [...tempConfig[key].slabs];
                                     newSlabs[idx].rate = Number(e.target.value);
@@ -288,103 +312,63 @@
             );
 
             return (
-                <Modal isOpen={isOpen} onClose={onClose} title="Global Settings">
-                    <div className="flex flex-col h-[70vh]">
-                        <div className="flex gap-2 overflow-x-auto pb-2 mb-4 border-b border-slate-700 shrink-0">
-                            {['sp', 'tb', 'cp', 'caps'].map(s => (
-                                <button key={s} onClick={() => setSection(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${section === s ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{s}</button>
-                            ))}
+                <Modal isOpen={isOpen} onClose={onClose} title="Incentive Settings">
+                    <div className="flex gap-2 overflow-x-auto pb-2 mb-4 border-b border-slate-700 shrink-0 no-scrollbar">
+                        {['sp', 'tb', 'cp', 'caps'].map(s => (
+                            <button key={s} onClick={() => setSection(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${section === s ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{s}</button>
+                        ))}
+                    </div>
+                    {section === 'sp' && renderSlabEditor('sp', 'Smartphone')}
+                    {section === 'tb' && renderSlabEditor('tb', 'Tablet')}
+                    {section === 'cp' && renderSlabEditor('cp', 'Care+')}
+                    {section === 'caps' && (
+                        <div className="space-y-4">
+                                <h4 className="font-bold text-white text-sm uppercase tracking-wider mb-2">Max Caps (₹)</h4>
+                                {Object.entries(tempConfig.caps).map(([k, v]) => (
+                                    <div key={k} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl">
+                                        <span className="text-slate-300 text-sm uppercase font-bold">{k}</span>
+                                        <input type="number" value={v} onChange={(e) => {
+                                            setTempConfig({...tempConfig, caps: {...tempConfig.caps, [k]: Number(e.target.value)}});
+                                        }} className="bg-transparent text-right text-white font-bold outline-none w-24" />
+                                    </div>
+                                ))}
                         </div>
-
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                            {section === 'sp' && renderSlabEditor('sp', 'Smartphone')}
-                            {section === 'tb' && renderSlabEditor('tb', 'Tablet')}
-                            {section === 'cp' && renderSlabEditor('cp', 'Care+')}
-
-                            {section === 'caps' && (
-                                <div className="space-y-4">
-                                     <h4 className="font-bold text-white text-sm uppercase tracking-wider mb-2">Max Caps (₹)</h4>
-                                     {Object.entries(tempConfig.caps).map(([k, v]) => (
-                                         <div key={k} className="flex justify-between items-center bg-slate-800 p-3 rounded-xl">
-                                             <span className="text-slate-300 text-sm uppercase font-bold">{k}</span>
-                                             <input type="number" value={v} onChange={(e) => {
-                                                 setTempConfig({...tempConfig, caps: {...tempConfig.caps, [k]: Number(e.target.value)}});
-                                             }} className="bg-transparent text-right text-white font-bold outline-none w-24" />
-                                         </div>
-                                     ))}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="pt-4 mt-4 border-t border-slate-700 flex justify-end gap-2 shrink-0">
-                            <Button variant="outline" onClick={onClose}>Cancel</Button>
-                            <Button onClick={handleSave}>Save Changes</Button>
-                        </div>
+                    )}
+                    <div className="pt-4 mt-4 border-t border-slate-700 flex justify-end gap-2 shrink-0">
+                        <Button variant="outline" onClick={onClose}>Cancel</Button>
+                        <Button onClick={() => { setConfig(tempConfig); onClose(); }}>Save</Button>
                     </div>
                 </Modal>
             );
         };
 
         const SecuritySettings = ({ isOpen, onClose }) => {
-            const [mode, setMode] = useState('menu'); // menu, set, change
-            const [step, setStep] = useState(0); // 0: old, 1: new, 2: confirm
+            const [mode, setMode] = useState('menu');
+            const [step, setStep] = useState(0);
             const [buffer, setBuffer] = useState("");
             const [newPin, setNewPin] = useState("");
             const toast = useToast();
             const confirm = useConfirm();
-            
             const hasPin = !!localStorage.getItem('sec_app_pin');
 
             const handleSetPin = (pin) => {
-                if(step === 1) {
-                    setNewPin(pin);
-                    setBuffer("");
-                    setStep(2);
-                } else if (step === 2) {
-                    if(pin === newPin) {
-                        localStorage.setItem('sec_app_pin', pin);
-                        toast.addToast("Security PIN Set Successfully!", "success");
-                        onClose();
-                    } else {
-                        toast.addToast("PINs do not match. Try again.", "error");
-                        setBuffer("");
-                        setStep(1);
-                    }
+                if(step === 1) { setNewPin(pin); setBuffer(""); setStep(2); }
+                else if (step === 2) {
+                    if(pin === newPin) { localStorage.setItem('sec_app_pin', pin); toast.addToast("PIN Set!", "success"); onClose(); }
+                    else { toast.addToast("Mismatch", "error"); setBuffer(""); setStep(1); }
                 }
-            };
-
-            const handleRemove = () => {
-                confirm({
-                    title: "Remove Security PIN?",
-                    message: "Are you sure? Anyone will be able to access the app without a PIN.",
-                    isDanger: true,
-                    onConfirm: () => {
-                        localStorage.removeItem('sec_app_pin');
-                        toast.addToast("Security PIN Removed.", "info");
-                        onClose();
-                    }
-                });
             };
 
             const renderKeypad = (onEnter, label) => (
                 <div className="flex flex-col items-center">
                     <h3 className="text-white font-bold mb-4">{label}</h3>
                     <div className="flex gap-4 mb-6">
-                        {[0, 1, 2, 3].map((i) => (
-                            <div key={i} className={`w-3 h-3 rounded-full ${buffer.length > i ? 'bg-brand-500' : 'bg-slate-700'}`}></div>
-                        ))}
+                        {[0, 1, 2, 3].map((i) => <div key={i} className={`w-3 h-3 rounded-full ${buffer.length > i ? 'bg-brand-500' : 'bg-slate-700'}`}></div>)}
                     </div>
                     <div className="grid grid-cols-3 gap-3 w-full max-w-[240px]">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map(n => (
-                            <button 
-                                key={n}
-                                onClick={() => {
-                                    if(n === 'C') setBuffer(buffer.slice(0, -1));
-                                    else if(n === 'OK') { if(buffer.length === 4) onEnter(buffer); }
-                                    else if(buffer.length < 4) setBuffer(buffer + n);
-                                }}
-                                className="h-12 bg-slate-800 rounded-xl text-white font-bold hover:bg-slate-700 active:scale-95 flex items-center justify-center"
-                            >
+                            <button key={n} onClick={() => { if(n === 'C') setBuffer(buffer.slice(0, -1)); else if(n === 'OK') { if(buffer.length === 4) onEnter(buffer); } else if(buffer.length < 4) setBuffer(buffer + n); }}
+                                className="h-12 bg-slate-800 rounded-xl text-white font-bold hover:bg-slate-700 flex items-center justify-center">
                                 {n === 'OK' ? <LucideIcon name="check" size={16}/> : n === 'C' ? <LucideIcon name="delete" size={16}/> : n}
                             </button>
                         ))}
@@ -393,219 +377,71 @@
             );
 
             if(!isOpen) return null;
-
             return (
-                <Modal isOpen={isOpen} onClose={onClose} title="Security Settings">
+                <Modal isOpen={isOpen} onClose={onClose} title="Security">
                     {mode === 'menu' && (
                         <div className="space-y-3">
-                            <div className="p-4 bg-brand-500/10 border border-brand-500/20 rounded-xl mb-4">
-                                <div className="flex items-center gap-3 mb-2">
-                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${hasPin ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-                                        <LucideIcon name={hasPin ? "lock" : "unlock"} />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-bold text-white">{hasPin ? "App Secured" : "Unsecured"}</h4>
-                                        <p className="text-xs text-slate-400">{hasPin ? "PIN protection is active." : "Set a PIN to protect your data."}</p>
-                                    </div>
-                                </div>
+                             <div className="p-4 bg-brand-500/10 border border-brand-500/20 rounded-xl mb-4 flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${hasPin ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}><LucideIcon name={hasPin ? "lock" : "unlock"} /></div>
+                                <div><h4 className="font-bold text-white">{hasPin ? "Secured" : "Unsecured"}</h4><p className="text-xs text-slate-400">{hasPin ? "PIN active." : "Set a PIN."}</p></div>
                             </div>
-                            
-                            {!hasPin ? (
-                                <Button onClick={()=>{setMode('set'); setStep(1); setBuffer("");}} className="w-full" icon="plus">Set New PIN</Button>
-                            ) : (
-                                <>
-                                    <Button onClick={()=>{setMode('set'); setStep(1); setBuffer("");}} variant="secondary" className="w-full" icon="refresh-cw">Change PIN</Button>
-                                    <Button onClick={handleRemove} variant="danger" className="w-full" icon="unlock">Remove Security</Button>
-                                </>
-                            )}
+                            {!hasPin ? <Button onClick={()=>{setMode('set'); setStep(1); setBuffer("");}} className="w-full" icon="plus">Set PIN</Button> :
+                            <> <Button onClick={()=>{setMode('set'); setStep(1); setBuffer("");}} variant="secondary" className="w-full" icon="refresh-cw">Change PIN</Button>
+                               <Button onClick={()=>{confirm({title:"Remove PIN?", message:"Sure?", isDanger:true, onConfirm:()=>{localStorage.removeItem('sec_app_pin'); onClose(); toast.addToast("Removed", "info");}})}} variant="danger" className="w-full" icon="unlock">Remove PIN</Button> </>}
                         </div>
                     )}
-
-                    {mode === 'set' && (
-                        <div>
-                            <button onClick={()=>setMode('menu')} className="mb-4 text-xs text-slate-400 hover:text-white flex items-center gap-1"><LucideIcon name="arrow-left" size={14}/> Back</button>
-                            {renderKeypad(handleSetPin, step === 1 ? "Enter New PIN" : "Confirm New PIN")}
-                        </div>
-                    )}
+                    {mode === 'set' && <div><button onClick={()=>setMode('menu')} className="mb-4 text-xs text-slate-400 flex gap-1"><LucideIcon name="arrow-left" size={14}/> Back</button>{renderKeypad(handleSetPin, step === 1 ? "Enter New PIN" : "Confirm")}</div>}
                 </Modal>
             );
         };
 
-        const Card = ({ children, className = "" }) => (
-            <div className={`glass-card rounded-2xl p-5 ${className}`}>{children}</div>
-        );
-
-        const Button = ({ children, onClick, variant = 'primary', className = "", icon = null }) => {
-            const base = "px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2";
-            const variants = {
-                primary: "bg-brand-600 text-white shadow-lg shadow-brand-900/20 hover:bg-brand-500",
-                secondary: "bg-slate-700 text-slate-200 hover:bg-slate-600",
-                outline: "border border-slate-600 text-slate-400 hover:bg-slate-800 hover:text-white",
-                danger: "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
-            };
+        const LockScreen = ({ onUnlock }) => {
+            const [pin, setPin] = useState("");
+            const [error, setError] = useState(false);
+            const handleUnlock = () => { if (localStorage.getItem('sec_app_pin') === pin) onUnlock(); else { setError(true); setPin(""); setTimeout(() => setError(false), 1000); } };
             return (
-                <button onClick={onClick} className={`${base} ${variants[variant]} ${className}`}>
-                    {icon && <LucideIcon name={icon} size={18} />}
-                    {children}
-                </button>
-            );
-        };
-
-        const Input = ({ label, value, onChange, type = "text", placeholder = "", className = "" }) => (
-            <div className={`w-full ${className}`}>
-                {label && <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block ml-1">{label}</label>}
-                <input 
-                    type={type} 
-                    value={value} 
-                    onChange={onChange} 
-                    placeholder={placeholder}
-                    className="w-full h-12 px-4 rounded-xl bg-slate-800/50 border border-slate-700 text-sm font-bold text-white focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/50 placeholder-slate-500 transition-all"
-                />
-            </div>
-        );
-
-        const Modal = ({ isOpen, onClose, title, children }) => {
-            if (!isOpen) return null;
-            return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-800/50">
-                            <h3 className="font-bold text-white text-lg">{title}</h3>
-                            <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white"><LucideIcon name="x" /></button>
-                        </div>
-                        <div className="p-6 overflow-y-auto custom-scrollbar">
-                            {children}
-                        </div>
+                <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-4">
+                    <div className="mb-8 scale-150"><AppLogo size="large" /></div>
+                    <div className="flex gap-4 mb-8">
+                        {[0, 1, 2, 3].map((i) => <div key={i} className={`w-4 h-4 rounded-full ${pin.length > i ? 'bg-brand-500' : 'bg-slate-800'}`}></div>)}
                     </div>
+                    <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'Go'].map(n => (
+                            <button key={n} onClick={() => { if(n === 'C') setPin(pin.slice(0, -1)); else if(n === 'Go') handleUnlock(); else if(pin.length < 4) setPin(pin + n); }}
+                                className={`h-16 rounded-2xl font-bold text-xl flex items-center justify-center ${n === 'Go' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-white'}`}>
+                                {n === 'Go' ? <LucideIcon name="arrow-right" /> : n === 'C' ? <LucideIcon name="delete" /> : n}
+                            </button>
+                        ))}
+                    </div>
+                    {error && <p className="text-red-500 mt-6 animate-bounce font-bold">Incorrect PIN</p>}
                 </div>
             );
         };
 
-        const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", cancelText = "Cancel", isDanger = false }) => {
-            if (!isOpen) return null;
-            return (
-                <Modal isOpen={isOpen} onClose={onClose} title={title}>
-                    <div className="space-y-4">
-                        <p className="text-slate-300 text-sm">{message}</p>
-                        <div className="flex gap-3 justify-end">
-                            <Button onClick={onClose} variant="secondary">{cancelText}</Button>
-                            <Button onClick={() => { onConfirm(); }} variant={isDanger ? "danger" : "primary"}>{confirmText}</Button>
-                        </div>
-                    </div>
-                </Modal>
-            );
-        };
-
-        // --- CONTEXTS & PROVIDERS ---
-        const ToastContext = React.createContext();
-        const useToast = () => React.useContext(ToastContext);
-
-        const ToastProvider = ({ children }) => {
-            const [toasts, setToasts] = useState([]);
-
-            const addToast = (message, type = 'info') => {
-                const id = Date.now() + Math.random();
-                setToasts(prev => [...prev, { id, message, type }]);
-                setTimeout(() => removeToast(id), 3000);
-            };
-
-            const removeToast = (id) => {
-                setToasts(prev => prev.filter(t => t.id !== id));
-            };
-
-            return (
-                <ToastContext.Provider value={{ addToast }}>
-                    {children}
-                    <div className="fixed bottom-4 right-4 z-[110] flex flex-col gap-2">
-                        {toasts.map(t => (
-                            <div key={t.id} className={`min-w-[200px] p-4 rounded-xl shadow-lg border backdrop-blur-md animate-fade-in-up flex items-center gap-3 ${
-                                t.type === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                                t.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                                'bg-slate-800/90 border-slate-700 text-white'
-                            }`}>
-                                <LucideIcon name={t.type === 'error' ? 'alert-circle' : t.type === 'success' ? 'check-circle' : 'info'} size={20} />
-                                <span className="text-sm font-bold">{t.message}</span>
-                            </div>
-                        ))}
-                    </div>
-                </ToastContext.Provider>
-            );
-        };
-
-        const ConfirmContext = React.createContext();
-        const useConfirm = () => React.useContext(ConfirmContext);
-
-        const ConfirmProvider = ({ children }) => {
-            const [state, setState] = useState({ isOpen: false, title: "", message: "", onConfirm: null, isDanger: false });
-
-            const confirm = ({ title = "Confirm", message, onConfirm, isDanger = false }) => {
-                setState({ isOpen: true, title, message, onConfirm, isDanger });
-            };
-
-            const handleConfirm = () => {
-                if(state.onConfirm) state.onConfirm();
-                setState(prev => ({ ...prev, isOpen: false }));
-            };
-
-            const handleClose = () => setState(prev => ({ ...prev, isOpen: false }));
-
-            return (
-                <ConfirmContext.Provider value={confirm}>
-                    {children}
-                    <ConfirmModal 
-                        isOpen={state.isOpen} 
-                        onClose={handleClose} 
-                        onConfirm={handleConfirm}
-                        title={state.title}
-                        message={state.message}
-                        isDanger={state.isDanger}
-                    />
-                </ConfirmContext.Provider>
-            );
-        };
-
-        // --- MAIN APP COMPONENT ---
+        // --- APP ---
         const App = () => {
-            const [view, setView] = useState('home'); // home, tracker, incentive, docs
+            const [view, setView] = useState('home');
             const [isLocked, setIsLocked] = useState(false);
             const [showSecurity, setShowSecurity] = useState(false);
 
-            useEffect(() => {
-                const hasPin = !!localStorage.getItem('sec_app_pin');
-                if (hasPin) setIsLocked(true);
-            }, []);
+            useEffect(() => { if (localStorage.getItem('sec_app_pin')) setIsLocked(true); }, []);
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [view, isLocked]);
 
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [view, isLocked]);
-
-            if (isLocked) {
-                return <LockScreen onUnlock={() => setIsLocked(false)} />;
-            }
+            if (isLocked) return <LockScreen onUnlock={() => setIsLocked(false)} />;
 
             return (
                 <div className="min-h-screen relative flex flex-col">
                     <SecuritySettings isOpen={showSecurity} onClose={() => setShowSecurity(false)} />
-                    
-                    {/* Background Elements */}
                     <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
                         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-brand-600/10 rounded-full blur-[120px]"></div>
                         <div className="absolute bottom-[-10%] right-[-10%] w-[400px] h-[400px] bg-indigo-600/10 rounded-full blur-[100px]"></div>
                     </div>
-
-                    {/* Navigation Header (Sticky) */}
                     {view !== 'home' && (
                         <header className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-white/5 px-4 py-3 flex items-center justify-between">
-                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('home')}>
-                                <AppLogo />
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={() => setView('home')} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"><LucideIcon name="home" /></button>
-                            </div>
+                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('home')}><AppLogo /></div>
+                            <button onClick={() => setView('home')} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"><LucideIcon name="home" /></button>
                         </header>
                     )}
-
-                    {/* Views */}
                     <main className="flex-1 w-full max-w-5xl mx-auto">
                         {view === 'home' && <HomeView setView={setView} openSecurity={() => setShowSecurity(true)} />}
                         {view === 'tracker' && <SalesTracker />}
@@ -615,148 +451,165 @@
                 </div>
             );
         };
-        
-        // --- HOME VIEW ---
+
         const HomeView = ({ setView, openSecurity }) => {
-             const tools = [
-                { id: 'tracker', title: "Daily Sales Tracker", subtitle: "Version 15.3", desc: "Track daily volumes, visualize trends, and manage targets.", icon: "bar-chart-2", color: "text-brand-400", bg: "bg-brand-500/10" },
-                { id: 'incentive', title: "Incentive Calculator", subtitle: "Hybrid Structure", desc: "Calculate payouts with slabs, gates, and kicker logic.", icon: "calculator", color: "text-emerald-400", bg: "bg-emerald-500/10" },
-                { id: 'docs', title: "Scheme Documents", subtitle: "Resource Hub", desc: "Store and view monthly scheme PDFs and policy docs.", icon: "file-text", color: "text-purple-400", bg: "bg-purple-500/10" }
-            ];
+            const tools = [
+               { id: 'tracker', title: "Daily Sales Tracker", subtitle: "SEH v2", desc: "Track sales with Brand, Model, Variant & Price.", icon: "bar-chart-2", color: "text-brand-400", bg: "bg-brand-500/10" },
+               { id: 'incentive', title: "Incentive Calculator", subtitle: "Hybrid Structure", desc: "Calculate payouts with slabs, gates, and kicker logic.", icon: "calculator", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+               { id: 'docs', title: "Scheme Documents", subtitle: "Resource Hub", desc: "View scheme PDFs and docs.", icon: "file-text", color: "text-purple-400", bg: "bg-purple-500/10" }
+           ];
+           return (
+               <div className="px-6 py-12 flex flex-col justify-center min-h-[80vh]">
+                    <div className="mb-12 animate-fade-in-up flex justify-between items-start">
+                       <div><div className="mb-6"><AppLogo size="large" /></div><h2 className="text-4xl font-display font-bold text-white mb-3">Welcome Back.</h2><p className="text-slate-400 text-lg">Sales Entry & Handler v2</p></div>
+                       <button onClick={openSecurity} className="p-3 bg-slate-800 rounded-xl text-slate-400 hover:text-white"><LucideIcon name="shield-check" size={24} /></button>
+                   </div>
+                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                       {tools.map((tool, idx) => (
+                           <div key={tool.id} onClick={() => setView(tool.id)} className="glass-card p-6 rounded-2xl group cursor-pointer animate-fade-in-up hover:border-brand-500/30" style={{animationDelay: `${0.1 + (idx * 0.1)}s`}}>
+                               <div className="flex items-start justify-between mb-4"><div className={`w-14 h-14 rounded-2xl ${tool.bg} ${tool.color} flex items-center justify-center border border-white/5`}><LucideIcon name={tool.icon} size={28} /></div><LucideIcon name="arrow-right" size={20} className="text-slate-600 group-hover:text-brand-400 transition-all" /></div>
+                               <h3 className="text-xl font-bold text-white mb-1 group-hover:text-brand-400">{tool.title}</h3><p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{tool.subtitle}</p><p className="text-sm text-slate-400">{tool.desc}</p>
+                           </div>
+                       ))}
+                   </div>
+               </div>
+           );
+       };
 
-            return (
-                <div className="px-6 py-12 flex flex-col justify-center min-h-[80vh]">
-                     <div className="mb-12 animate-fade-in-up flex justify-between items-start">
-                        <div>
-                            <div className="mb-6">
-                                <AppLogo size="large" />
-                            </div>
-                            <h2 className="text-4xl font-display font-bold text-white mb-3">
-                                Welcome Back.
-                            </h2>
-                            <p className="text-slate-400 text-lg max-w-md">
-                                Your centralized command center for sales tracking and incentive management.
-                            </p>
-                        </div>
-                        <button onClick={openSecurity} className="p-3 bg-slate-800 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700 transition-all">
-                            <LucideIcon name="shield-check" size={24} />
-                        </button>
-                    </div>
-                    
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {tools.map((tool, idx) => (
-                            <div 
-                                key={tool.id} 
-                                onClick={() => setView(tool.id)}
-                                className="glass-card p-6 rounded-2xl group cursor-pointer animate-fade-in-up hover:border-brand-500/30"
-                                style={{animationDelay: `${0.1 + (idx * 0.1)}s`}}
-                            >
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className={`w-14 h-14 rounded-2xl ${tool.bg} ${tool.color} flex items-center justify-center border border-white/5`}>
-                                        <LucideIcon name={tool.icon} size={28} />
-                                    </div>
-                                    <LucideIcon name="arrow-right" size={20} className="text-slate-600 group-hover:text-brand-400 group-hover:translate-x-1 transition-all" />
-                                </div>
-                                <h3 className="text-xl font-bold text-white mb-1 group-hover:text-brand-400 transition-colors">{tool.title}</h3>
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{tool.subtitle}</p>
-                                <p className="text-sm text-slate-400 leading-relaxed">{tool.desc}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        };
-
-        const SalesTracker = () => {
-            const [view, setView] = useState('entry'); // entry, report, analytics, profile
+       // --- SALES TRACKER (REFACTORED for SEH v2) ---
+       const SalesTracker = () => {
+            const [view, setView] = useState('entry');
             const [showImportExport, setShowImportExport] = useState(false);
-            
             const [salesData, setSalesData] = useState(() => {
-                const v15 = localStorage.getItem('sec_sales_data_v15');
-                if (v15) return JSON.parse(v15);
-                return {};
+                const d = localStorage.getItem('seh_sales_data_v16');
+                return d ? JSON.parse(d) : {};
             });
-            const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('sec_profile_v15') || '{"name":"","code":"","outlet":"","outletCode":"","managerName":"","managerCode":"","targetVol":0,"targetVal":0}'));
+            const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('seh_profile_v16') || '{"name":"","outlet":""}'));
             const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
-            
-            // New: Independent Month for Reporting
-            const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+            const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7));
 
-            // Queue & Inputs
-            const [pendingQueue, setPendingQueue] = useState([]);
-            const [inputBrand, setInputBrand] = useState('');
-            const [inputModel, setInputModel] = useState('');
-            const [inputVariant, setInputVariant] = useState(''); // Added Variant
-            const [inputPrice, setInputPrice] = useState('');
-            const [inputQty, setInputQty] = useState(1);
+            const [queue, setQueue] = useState([]);
+            const [inputs, setInputs] = useState({ brand: "", model: "", variant: "", price: "", qty: 1 });
             
             const toast = useToast();
             const confirm = useConfirm();
-
-            const brandsList = [
-                { key: 'samsung', label: 'Samsung', aliases: ['samsung', 'sam'], color: '#3b82f6' },
-                { key: 'iphone', label: 'Apple', aliases: ['iphone', 'apple', 'app'], color: '#64748b' },
-                { key: 'realme', label: 'Realme', aliases: ['realme', 'real'], color: '#eab308' },
-                { key: 'mi', label: 'Xiaomi', aliases: ['mi', 'xiaomi', 'redmi'], color: '#f97316' },
-                { key: 'oppo', label: 'Oppo', aliases: ['oppo', 'opp'], color: '#10b981' },
-                { key: 'vivo', label: 'Vivo', aliases: ['vivo', 'viv'], color: '#06b6d4' },
-                { key: 'moto', label: 'Moto', aliases: ['moto', 'motorola'], color: '#6366f1' },
-                { key: 'other', label: 'Others', aliases: ['other', 'oth'], color: '#94a3b8' },
-            ];
-
-            useEffect(() => { localStorage.setItem('sec_sales_data_v15', JSON.stringify(salesData)); }, [salesData]);
-            useEffect(() => { localStorage.setItem('sec_profile_v15', JSON.stringify(profile)); }, [profile]);
-
             const pieChartRef = useRef(null);
             const barChartRef = useRef(null);
             const chartInstances = useRef({});
 
-            // --- ANALYTICS ---
+            const brands = [
+                { key: 'samsung', label: 'Samsung', color: '#3b82f6' }, { key: 'iphone', label: 'Apple', color: '#64748b' },
+                { key: 'realme', label: 'Realme', color: '#eab308' }, { key: 'mi', label: 'Xiaomi', color: '#f97316' },
+                { key: 'oppo', label: 'Oppo', color: '#10b981' }, { key: 'vivo', label: 'Vivo', color: '#06b6d4' },
+                { key: 'moto', label: 'Moto', color: '#6366f1' }, { key: 'other', label: 'Others', color: '#94a3b8' }
+            ];
+
+            useEffect(() => { localStorage.setItem('seh_sales_data_v16', JSON.stringify(salesData)); }, [salesData]);
+            useEffect(() => { localStorage.setItem('seh_profile_v16', JSON.stringify(profile)); }, [profile]);
+
+            // --- Stats Logic ---
+            const getStats = useMemo(() => {
+                const stats = { mtd: { vol: 0, val: 0, byBrand: {} }, lmtd: { vol: 0, val: 0, byBrand: {} }, grouped: {}, segments: { '<10k':0, '10-20k':0, '20-30k':0, '30-50k':0, '>50k':0 }, ftd: { vol: 0, val: 0 } };
+                brands.forEach(b => {
+                    stats.mtd.byBrand[b.key] = { vol: 0, val: 0 };
+                    stats.lmtd.byBrand[b.key] = { vol: 0, val: 0 };
+                });
+
+                // Helper dates
+                const now = new Date(reportMonth + "-01");
+                const lastMonthDate = new Date(new Date(now).setMonth(now.getMonth() - 1));
+                const lastMonthStr = lastMonthDate.toISOString().slice(0, 7);
+
+                // FTD
+                const todayTxns = salesData[currentDate] || [];
+                todayTxns.forEach(t => { stats.ftd.vol += t.qty; stats.ftd.val += t.val; });
+
+                // Loop all dates
+                Object.keys(salesData).forEach(date => {
+                    const txns = salesData[date];
+                    if(!Array.isArray(txns)) return;
+
+                    const isMtd = date.startsWith(reportMonth);
+                    const isLmtd = date.startsWith(lastMonthStr);
+
+                    txns.forEach(t => {
+                        // MTD
+                        if(isMtd) {
+                            stats.mtd.vol += t.qty; stats.mtd.val += t.val;
+                            if(stats.mtd.byBrand[t.brand]) {
+                                stats.mtd.byBrand[t.brand].vol += t.qty;
+                                stats.mtd.byBrand[t.brand].val += t.val;
+                            }
+
+                            // Grouping (MTD Only)
+                            if(!stats.grouped[t.brand]) stats.grouped[t.brand] = { vol:0, val:0, models:{} };
+                            const bGroup = stats.grouped[t.brand];
+                            bGroup.vol += t.qty; bGroup.val += t.val;
+
+                            const mKey = t.model || "Unknown";
+                            if(!bGroup.models[mKey]) bGroup.models[mKey] = { vol:0, val:0, variants:{} };
+                            const mGroup = bGroup.models[mKey];
+                            mGroup.vol += t.qty; mGroup.val += t.val;
+
+                            const vKey = t.variant || "Base";
+                            if(!mGroup.variants[vKey]) mGroup.variants[vKey] = { vol:0, val:0 };
+                            mGroup.variants[vKey].vol += t.qty; mGroup.variants[vKey].val += t.val;
+
+                            // Segments (MTD Only)
+                            const p = t.price;
+                            if(p<10000) stats.segments['<10k'] += t.qty;
+                            else if(p<20000) stats.segments['10-20k'] += t.qty;
+                            else if(p<30000) stats.segments['20-30k'] += t.qty;
+                            else if(p<50000) stats.segments['30-50k'] += t.qty;
+                            else stats.segments['>50k'] += t.qty;
+                        }
+
+                        // LMTD
+                        if(isLmtd) {
+                            stats.lmtd.vol += t.qty; stats.lmtd.val += t.val;
+                            if(stats.lmtd.byBrand[t.brand]) {
+                                stats.lmtd.byBrand[t.brand].vol += t.qty;
+                                stats.lmtd.byBrand[t.brand].val += t.val;
+                            }
+                        }
+                    });
+                });
+                return stats;
+            }, [salesData, currentDate, reportMonth]);
+
+            // --- Charts ---
             useEffect(() => {
-                if (view === 'analytics') {
-                    // Cleanup
+                if(view === 'analytics') {
                     if(chartInstances.current.pie) chartInstances.current.pie.destroy();
                     if(chartInstances.current.bar) chartInstances.current.bar.destroy();
 
-                    const stats = calculateStats(reportMonth);
-                    const lastMonth = new Date(new Date(reportMonth + "-01").setMonth(new Date(reportMonth + "-01").getMonth() - 1)).toISOString().slice(0, 7);
-                    const lastStats = calculateStats(lastMonth);
-
-                    // 1. Pie Chart (MTD vs LMTD Volume)
-                    if(pieChartRef.current) {
-                        const ctx = pieChartRef.current.getContext('2d');
-                        chartInstances.current.pie = new Chart(ctx, {
+                    const ctxPie = pieChartRef.current?.getContext('2d');
+                    if(ctxPie) {
+                        // MTD vs LMTD Volume Comparison
+                        chartInstances.current.pie = new Chart(ctxPie, {
                             type: 'doughnut',
                             data: {
                                 labels: ['Current Month', 'Last Month'],
                                 datasets: [{
-                                    data: [stats.mtd.vol, lastStats.mtd.vol],
+                                    data: [getStats.mtd.vol, getStats.lmtd.vol],
                                     backgroundColor: ['#0ea5e9', '#334155'],
-                                    borderColor: '#1e293b',
-                                    borderWidth: 2
+                                    borderWidth: 0
                                 }]
                             },
-                            options: {
-                                responsive: true,
-                                plugins: {
-                                    legend: { position: 'bottom', labels: { color: '#94a3b8' } },
-                                    title: { display: true, text: `Volume Comparison (MTD vs LMTD)`, color: '#fff' }
-                                }
-                            }
+                            options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } }, title: { display: true, text: 'Volume (MTD vs LMTD)', color: '#fff' } } }
                         });
                     }
-
-                    // 2. Bar Chart (Year Growth - Simplified to MTD breakdown for now or Growth)
-                    if(barChartRef.current) {
-                        const ctxBar = barChartRef.current.getContext('2d');
-                        const labels = brandsList.map(b => b.label);
-                        const dataCurr = brandsList.map(b => stats.mtd.breakdownVol[b.key]);
-                        const dataLast = brandsList.map(b => lastStats.mtd.breakdownVol[b.key]);
+                    const ctxBar = barChartRef.current?.getContext('2d');
+                    if(ctxBar) {
+                        // Brand-wise Comparison (This Month vs Last Month)
+                        const labels = brands.map(b => b.label);
+                        const dataCurr = brands.map(b => getStats.mtd.byBrand[b.key]?.vol || 0);
+                        const dataLast = brands.map(b => getStats.lmtd.byBrand[b.key]?.vol || 0);
 
                         chartInstances.current.bar = new Chart(ctxBar, {
                             type: 'bar',
                             data: {
-                                labels: labels,
+                                labels,
                                 datasets: [
                                     { label: 'This Month', data: dataCurr, backgroundColor: '#0ea5e9', borderRadius: 4 },
                                     { label: 'Last Month', data: dataLast, backgroundColor: '#334155', borderRadius: 4 }
@@ -765,560 +618,233 @@
                             options: {
                                 indexAxis: 'y',
                                 responsive: true,
-                                scales: {
-                                    x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
-                                    y: { grid: { display: false }, ticks: { color: '#fff' } }
-                                },
-                                plugins: {
-                                    legend: { labels: { color: '#94a3b8' } },
-                                    title: { display: true, text: 'Brand Performance (YoY/MoM)', color: '#fff' }
-                                }
+                                scales: { x: { ticks: { color: '#94a3b8' } }, y: { ticks: { color: '#94a3b8' }, grid: { display: false } } },
+                                plugins: { legend: { labels: { color: '#cbd5e1' } }, title: { display: true, text: 'Brand Growth (MoM)', color: '#fff' } }
                             }
                         });
                     }
                 }
-            }, [view, salesData, reportMonth]);
+            }, [view, getStats]);
 
-            // --- LOGIC ---
+            // --- Handlers ---
             const handleAdd = () => {
-                if(!inputBrand || !inputPrice) {
-                    toast.addToast("Please select a brand and enter price.", "error");
-                    return;
-                }
-                const qty = parseInt(inputQty) || 1;
-                const price = parseInt(inputPrice) || 0;
-                setPendingQueue([...pendingQueue, {
-                    id: Date.now(),
-                    brand: inputBrand,
-                    model: inputModel || 'Unknown',
-                    variant: inputVariant || '', // Save Variant
-                    price,
-                    qty,
-                    totalVal: price * qty
-                }]);
-                // Reset inputs except date
-                setInputModel(''); setInputVariant(''); setInputPrice(''); setInputQty(1);
+                if(!inputs.brand || !inputs.price) { toast.addToast("Brand & Price required", "error"); return; }
+                const newItem = { id: Date.now(), ...inputs, price: Number(inputs.price), qty: Number(inputs.qty), val: Number(inputs.price)*Number(inputs.qty) };
+                setQueue([...queue, newItem]);
+                setInputs({ ...inputs, model:"", variant:"", price:"", qty: 1 });
             };
-
             const handleSave = () => {
-                if(pendingQueue.length === 0) return;
-                const newEntry = { ...(salesData[currentDate] || { models: '' }) };
-                let logStr = "";
-                
-                pendingQueue.forEach(item => {
-                    const k = item.brand;
-                    newEntry[k] = (newEntry[k] || 0) + item.qty;
-                    newEntry[`${k}Val`] = (newEntry[`${k}Val`] || 0) + item.totalVal;
-                    // Format: [HH:MM] Brand Model Variant - Qty unit (Val: X)
-                    logStr += `[${new Date().toLocaleTimeString()}] ${brandsList.find(b=>b.key===k)?.label} ${item.model} ${item.variant} - ${item.qty} ${item.qty > 1 ? 'units' : 'unit'} (Val: ${item.totalVal})\n`;
-                });
-                newEntry.models = (newEntry.models || '') + logStr;
-                setSalesData({ ...salesData, [currentDate]: newEntry });
-                setPendingQueue([]);
-                toast.addToast("Saved successfully!", "success");
+                if(queue.length === 0) return;
+                const newTxns = queue.map(q => ({ ...q, time: new Date().toLocaleTimeString() }));
+                const existing = salesData[currentDate] || [];
+                setSalesData({ ...salesData, [currentDate]: [...existing, ...newTxns] });
+                setQueue([]);
+                toast.addToast("Saved", "success");
             };
 
-            const calculateStats = (targetMonthYyyyMm = null) => {
-                const monthPrefix = targetMonthYyyyMm || currentDate.slice(0, 7);
-                let mtd = { vol: 0, val: 0, breakdownVol: {}, breakdownVal: {} };
-                let ftd = { vol: 0, val: 0, breakdownVol: {}, breakdownVal: {} };
-                
-                brandsList.forEach(b => { 
-                    mtd.breakdownVol[b.key]=0; mtd.breakdownVal[b.key]=0; 
-                    ftd.breakdownVol[b.key]=0; ftd.breakdownVal[b.key]=0; 
-                });
-
-                if(salesData[currentDate]) {
-                     brandsList.forEach(b => {
-                        const v = Number(salesData[currentDate][b.key]||0); 
-                        const va = Number(salesData[currentDate][`${b.key}Val`]||0);
-                        ftd.vol += v; ftd.val += va;
-                        ftd.breakdownVol[b.key] += v; ftd.breakdownVal[b.key] += va;
+            // --- Import/Export ---
+            const exportData = (type) => {
+                const rows = [];
+                Object.entries(salesData).forEach(([date, txns]) => {
+                    txns.forEach(t => {
+                        rows.push({ Date: date, Time: t.time, Brand: brands.find(b=>b.key===t.brand)?.label, Model: t.model, Variant: t.variant, Price: t.price, Qty: t.qty, Value: t.val });
                     });
-                }
-
-                Object.keys(salesData).forEach(d => {
-                    if(d.startsWith(monthPrefix)) {
-                        const rec = salesData[d];
-                        brandsList.forEach(b => {
-                            const v = Number(rec[b.key]||0); const va = Number(rec[`${b.key}Val`]||0);
-                            mtd.vol += v; mtd.val += va; 
-                            mtd.breakdownVol[b.key] += v; mtd.breakdownVal[b.key] += va;
-                        });
-                    }
-                });
-                return { mtd, ftd };
-            };
-            
-            const stats = useMemo(() => calculateStats(view === 'report' || view === 'analytics' ? reportMonth : currentDate.slice(0, 7)), [salesData, currentDate, reportMonth, view]);
-            
-            // --- EXPORT & IMPORT ---
-            const exportExcel = () => {
-                const ws = XLSX.utils.json_to_sheet(
-                    Object.entries(salesData).map(([date, data]) => {
-                        let row = { Date: date, Log: data.models };
-                        brandsList.forEach(b => {
-                           row[`${b.label} Qty`] = data[b.key] || 0;
-                           row[`${b.label} Val`] = data[`${b.key}Val`] || 0;
-                        });
-                        return row;
-                    })
-                );
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Sales Data");
-                XLSX.writeFile(wb, "SEH_Data_Export.xlsx");
-            };
-
-            const exportPDF = () => {
-                const doc = new jspdf.jsPDF();
-
-                // 1. Header
-                doc.setFontSize(18);
-                doc.text("SEH - Sales Data Export", 14, 22);
-                doc.setFontSize(10);
-                doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
-
-                // 2. Data Table
-                const tableData = Object.entries(salesData).map(([date, data]) => {
-                    const row = [date];
-                    brandsList.forEach(b => {
-                        row.push(`${data[b.key]||0}`);
-                    });
-                    row.push(data.models ? data.models.slice(0, 50) + "..." : ""); // Truncate logs
-                    return row;
                 });
 
-                doc.autoTable({
-                    startY: 35,
-                    head: [['Date', ...brandsList.map(b=>b.label), 'Logs']],
-                    body: tableData,
-                    theme: 'grid',
-                    styles: { fontSize: 8 }
-                });
-
-                // 3. EMBED DATA FOR RECOVERY
-                // We add a hidden text block at the very end of the PDF containing the base64 encoded JSON
-                // This is a trick to allow re-importing from the PDF file itself.
-                const rawState = JSON.stringify(salesData);
-                const b64State = btoa(unescape(encodeURIComponent(rawState))); // UTF-8 safe base64
-
-                // Add a new page for the raw data signature
-                doc.addPage();
-                doc.setFontSize(5);
-                doc.setTextColor(255, 255, 255); // White text on white paper (Invisible to user)
-                doc.text("SEH_DATA_START::" + b64State + "::SEH_DATA_END", 10, 10);
-
-                doc.save("SEH_Full_Export.pdf");
-                toast.addToast("Exported PDF with embedded recovery data.", "success");
-            };
-
-            const importFile = (e) => {
-                const file = e.target.files[0];
-                if(!file) return;
-
-                const processRestore = (recoveredData) => {
-                     const count = Object.keys(recoveredData).length;
-                        confirm({
-                            title: "Restore Data?",
-                            message: `Found ${count} days of data. This will REPLACE existing data. Continue?`,
-                            isDanger: true,
-                            onConfirm: () => {
-                                setSalesData(recoveredData);
-                                // Auto-set to latest date
-                                const dates = Object.keys(recoveredData).sort();
-                                if(dates.length > 0) {
-                                    const lastDate = dates[dates.length - 1];
-                                    setCurrentDate(lastDate);
-                                    setReportMonth(lastDate.slice(0, 7));
-                                }
-                                toast.addToast("Restore Successful!", "success");
-                            }
-                        });
-                };
-
-                if(file.name.endsWith('.pdf')) {
-                    // PDF Parsing Strategy: Read as text/binary, find the magic signature
-                    const reader = new FileReader();
-                    reader.onload = (evt) => {
-                        const content = evt.target.result;
-                        // We need to scan the raw content for "SEH_DATA_START::"
-                        // Since PDF is complex, the text might be compressed.
-                        // However, jsPDF usually outputs uncompressed text for simple text adds unless configured otherwise.
-                        // But standard FileReader might not be enough if it's binary.
-                        // Let's try reading as Text first.
-                        const rawText = content; // readAsText
-                        const startMarker = "SEH_DATA_START::";
-                        const endMarker = "::SEH_DATA_END";
-                        const startIdx = rawText.indexOf(startMarker);
-                        const endIdx = rawText.indexOf(endMarker);
-
-                        if(startIdx !== -1 && endIdx !== -1) {
-                            try {
-                                const b64 = rawText.substring(startIdx + startMarker.length, endIdx);
-                                const json = decodeURIComponent(escape(atob(b64)));
-                                const data = JSON.parse(json);
-                                processRestore(data);
-                            } catch(err) {
-                                console.error(err);
-                                toast.addToast("Corrupt embedded data in PDF.", "error");
-                            }
-                        } else {
-                            toast.addToast("No SEH recovery data found in this PDF.", "error");
-                        }
-                    };
-                    reader.readAsText(file); // Try text reading
+                if(type === 'xlsx') {
+                    const ws = XLSX.utils.json_to_sheet(rows);
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+                    XLSX.writeFile(wb, "SEH_Data.xlsx");
                 } else {
-                    // XLSX Import
-                     const reader = new FileReader();
-                    reader.onload = (evt) => {
-                        try {
-                            const wb = XLSX.read(evt.target.result, {type:'binary'});
-                            const ws = wb.Sheets[wb.SheetNames[0]];
-                            const rawData = XLSX.utils.sheet_to_json(ws, {header: 1});
+                    const doc = new jspdf.jsPDF();
+                    doc.text("SEH Sales Report", 14, 20);
+                    doc.setFontSize(10);
+                    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 26);
 
-                            // Find header
-                            let headerRowIdx = -1;
-                            let headers = [];
-                            for(let i=0; i<rawData.length; i++) {
-                                const r = rawData[i];
-                                if(r.includes('Date') && (r.includes('Logs') || r.includes('Log'))) {
-                                    headerRowIdx = i;
-                                    headers = r;
-                                    break;
-                                }
-                            }
-                            if(headerRowIdx === -1) throw new Error("Could not find header row (Date/Logs)");
+                    const tableRows = rows.map(r => [r.Date, r.Brand, r.Model, r.Variant, r.Qty, r.Value]);
+                    doc.autoTable({ startY: 30, head: [['Date', 'Brand', 'Model', 'Variant', 'Qty', 'Val']], body: tableRows });
 
-                            const recovered = {};
-                            for(let i=headerRowIdx+1; i<rawData.length; i++) {
-                                const row = rawData[i];
-                                if(!row || row.length === 0) continue;
-                                const getVal = (name) => {
-                                    const idx = headers.indexOf(name);
-                                    return idx > -1 ? row[idx] : undefined;
-                                };
-                                const dateVal = getVal('Date');
-                                if(!dateVal) continue;
-                                let dateStr = dateVal;
-                                if(typeof dateVal === 'number') {
-                                    const d = new Date(Math.round((dateVal - 25569)*86400*1000));
-                                    dateStr = d.toISOString().split('T')[0];
-                                }
-                                const logVal = getVal('Logs') || getVal('Log') || '';
-                                const entry = { models: logVal };
-                                brandsList.forEach(b => {
-                                    const q = getVal(`${b.label} Qty`);
-                                    const v = getVal(`${b.label} Value`) || getVal(`${b.label} Val`);
-                                    if(q) entry[b.key] = Number(q);
-                                    if(v) entry[`${b.key}Val`] = Number(v);
-                                });
-                                recovered[dateStr] = entry;
-                            }
-                            processRestore(recovered);
-                        } catch(err) {
-                            console.error(err);
-                            toast.addToast("Failed to parse XLSX.", "error");
-                        }
-                    };
-                    reader.readAsBinaryString(file);
+                    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(salesData))));
+                    doc.addPage();
+                    doc.setFontSize(1);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(`SEH_RECOVERY::${b64}::END`, 10, 10);
+                    doc.save("SEH_Report.pdf");
                 }
+                toast.addToast(`Exported ${type.toUpperCase()}`, "success");
             };
 
-            // Backup/Restore Profile
-            const backupProfile = () => {
-                const blob = new Blob([JSON.stringify(profile)], {type: "application/json"});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = "SEH_Profile_Backup.json";
-                a.click();
-            };
-
-            const restoreProfile = (e) => {
+            const importData = (e) => {
                 const file = e.target.files[0];
                 if(!file) return;
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     try {
-                        const p = JSON.parse(evt.target.result);
-                        setProfile(p);
-                        toast.addToast("Profile Restored.", "success");
-                    } catch(err) { toast.addToast("Invalid Profile File", "error"); }
+                        if(file.name.endsWith('xlsx')) {
+                            const wb = XLSX.read(evt.target.result, {type:'binary'});
+                            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                            const restored = {};
+                            json.forEach(row => {
+                                const d = row.Date;
+                                if(!restored[d]) restored[d] = [];
+                                const bKey = brands.find(b=>b.label === row.Brand)?.key || 'other';
+                                restored[d].push({
+                                    id: Date.now() + Math.random(), time: row.Time || '00:00:00',
+                                    brand: bKey, model: row.Model, variant: row.Variant,
+                                    price: Number(row.Price), qty: Number(row.Qty), val: Number(row.Value)
+                                });
+                            });
+                            confirm({ title: "Restore Data?", message: "This will replace current data.", isDanger: true, onConfirm: () => { setSalesData(restored); toast.addToast("Restored from XLSX", "success"); }});
+                        } else if(file.name.endsWith('pdf')) {
+                             const txt = evt.target.result;
+                             const start = txt.indexOf("SEH_RECOVERY::");
+                             const end = txt.indexOf("::END");
+                             if(start > -1 && end > -1) {
+                                 const json = decodeURIComponent(escape(atob(txt.substring(start+14, end))));
+                                 confirm({ title: "Restore Data?", message: "Replace current data?", isDanger: true, onConfirm: () => { setSalesData(JSON.parse(json)); toast.addToast("Restored from PDF", "success"); }});
+                             } else { toast.addToast("No recovery data in PDF", "error"); }
+                        }
+                    } catch(err) { console.error(err); toast.addToast("Import Failed", "error"); }
                 };
-                reader.readAsText(file);
+                if(file.name.endsWith('pdf')) reader.readAsText(file); else reader.readAsBinaryString(file);
             };
 
             return (
-                <div className="animate-fade-in pb-20">
-                    {/* Toolbar */}
-                    <div className="flex justify-between items-center mb-6">
+                <div className="pb-24 animate-fade-in">
+                     <div className="flex justify-between items-center mb-6">
                         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 max-w-[70vw]">
                             {['entry', 'report', 'analytics', 'profile'].map(v => (
-                                <button 
-                                    key={v}
-                                    onClick={() => setView(v)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all ${view === v ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                >
-                                    {v}
-                                </button>
+                                <button key={v} onClick={() => setView(v)} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all ${view === v ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{v}</button>
                             ))}
                         </div>
-                        <button onClick={() => setShowImportExport(true)} className="p-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700">
-                            <LucideIcon name="database" size={20} />
-                        </button>
+                        <button onClick={() => setShowImportExport(true)} className="p-2 bg-slate-800 text-slate-300 rounded-lg"><LucideIcon name="database" size={20} /></button>
                     </div>
 
-                     <Modal isOpen={showImportExport} onClose={() => setShowImportExport(false)} title="Data Management">
-                        <div className="space-y-6">
-                            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                                <h4 className="font-bold text-white mb-2 flex items-center gap-2"><LucideIcon name="download" size={16}/> Export Data</h4>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Button onClick={exportExcel} variant="secondary">Excel (.xlsx)</Button>
-                                    <Button onClick={exportPDF} variant="secondary">PDF (.pdf)</Button>
+                    <Modal isOpen={showImportExport} onClose={()=>setShowImportExport(false)} title="Data Management">
+                        <div className="space-y-4">
+                            <div className="p-4 bg-slate-800 rounded-xl">
+                                <h4 className="font-bold text-white mb-2">Export</h4>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button variant="secondary" onClick={()=>exportData('xlsx')}>Excel (Backup)</Button>
+                                    <Button variant="secondary" onClick={()=>exportData('pdf')}>PDF (Report)</Button>
                                 </div>
                             </div>
-                            
-                            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                                <h4 className="font-bold text-white mb-2 flex items-center gap-2"><LucideIcon name="rotate-ccw" size={16}/> Restore Data</h4>
-                                <p className="text-xs text-slate-400 mb-4">Restore from a valid SEH Export (XLSX or PDF).</p>
-                                <div className="relative">
-                                    <input type="file" id="tracker-import-modal" className="hidden" accept=".xlsx,.pdf" onChange={importFile} />
-                                    <label htmlFor="tracker-import-modal" className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl font-bold text-sm bg-brand-600 text-white shadow-lg shadow-brand-500/20 hover:bg-brand-500 cursor-pointer transition-all">
-                                        Select Backup File
-                                    </label>
-                                </div>
+                            <div className="p-4 bg-slate-800 rounded-xl">
+                                <h4 className="font-bold text-white mb-2">Restore</h4>
+                                <input type="file" id="imp" className="hidden" accept=".xlsx,.pdf" onChange={importData} />
+                                <label htmlFor="imp" className="block text-center p-3 bg-brand-600 rounded-xl text-white font-bold cursor-pointer">Select Backup File</label>
                             </div>
-                            <Button onClick={() => setShowImportExport(false)} variant="outline" className="w-full">Close</Button>
                         </div>
                     </Modal>
 
-                    {/* VIEW: ENTRY */}
                     {view === 'entry' && (
                         <div className="space-y-6">
-                             <Card>
-                                <div className="flex justify-between items-center mb-4">
-                                    <div className="flex items-center gap-2">
-                                        <LucideIcon name="calendar" className="text-brand-400" />
-                                        <input type="date" value={currentDate} onChange={(e)=>setCurrentDate(e.target.value)} className="bg-transparent text-white font-bold outline-none" />
-                                    </div>
-                                    <button onClick={()=>setPendingQueue([])} className="text-xs text-red-400 hover:text-red-300">Clear Queue</button>
+                            <Card>
+                                <div className="flex justify-between mb-4 items-center">
+                                    <div className="flex items-center gap-2"><LucideIcon name="calendar" className="text-brand-400"/><input type="date" value={currentDate} onChange={e=>setCurrentDate(e.target.value)} className="bg-transparent text-white font-bold outline-none"/></div>
+                                    <button onClick={()=>setQueue([])} className="text-xs text-red-400">Clear</button>
                                 </div>
-                                
-                                <div className="grid grid-cols-1 gap-3 mb-3">
-                                    <select value={inputBrand} onChange={(e)=>setInputBrand(e.target.value)} className="w-full h-12 px-4 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold">
-                                        <option value="">Select Brand</option>
-                                        {brandsList.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
-                                    </select>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <Input placeholder="Model (e.g. S24)" value={inputModel} onChange={(e)=>setInputModel(e.target.value)} />
-                                        <Input placeholder="Variant (e.g. 8/128)" value={inputVariant} onChange={(e)=>setInputVariant(e.target.value)} />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <Input type="number" placeholder="Price" value={inputPrice} onChange={(e)=>setInputPrice(e.target.value)} />
-                                        <Input type="number" placeholder="Qty" value={inputQty} onChange={(e)=>setInputQty(e.target.value)} />
-                                    </div>
+                                <div className="space-y-3">
+                                    <select value={inputs.brand} onChange={e=>setInputs({...inputs, brand: e.target.value})} className="w-full h-12 px-4 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold"><option value="">Select Brand</option>{brands.map(b=><option key={b.key} value={b.key}>{b.label}</option>)}</select>
+                                    <div className="grid grid-cols-2 gap-3"><Input placeholder="Model" value={inputs.model} onChange={e=>setInputs({...inputs, model: e.target.value})} /><Input placeholder="Variant (8/128)" value={inputs.variant} onChange={e=>setInputs({...inputs, variant: e.target.value})} /></div>
+                                    <div className="grid grid-cols-2 gap-3"><Input type="number" placeholder="Price" value={inputs.price} onChange={e=>setInputs({...inputs, price: e.target.value})} /><Input type="number" placeholder="Qty" value={inputs.qty} onChange={e=>setInputs({...inputs, qty: e.target.value})} /></div>
+                                    <Button onClick={handleAdd} icon="plus" className="w-full">Add</Button>
                                 </div>
-                                <Button onClick={handleAdd} className="w-full" icon="plus">Add to Queue</Button>
                             </Card>
-
-                            {pendingQueue.length > 0 && (
-                                <div className="bg-slate-800 rounded-2xl p-4 animate-fade-in-up">
-                                    <h4 className="font-bold text-slate-300 mb-3 text-sm">Pending Save ({pendingQueue.length})</h4>
-                                    <div className="space-y-2 mb-4">
-                                        {pendingQueue.map((item, i) => (
-                                            <div key={i} className="flex justify-between text-xs p-2 bg-slate-700/50 rounded-lg">
-                                                <span className="text-slate-200">{item.brand} {item.model} {item.variant} x{item.qty}</span>
-                                                <span className="font-bold text-emerald-400">₹{item.totalVal}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <Button onClick={handleSave} variant="primary" className="w-full" icon="save">Save to {currentDate}</Button>
+                            {queue.length > 0 && (
+                                <div className="bg-slate-800 rounded-xl p-4">
+                                    <h4 className="text-slate-300 font-bold mb-3 text-sm">Queue ({queue.length})</h4>
+                                    {queue.map((item,i) => <div key={i} className="text-xs text-slate-400 border-b border-slate-700 pb-1 mb-1 flex justify-between"><span>{brands.find(b=>b.key===item.brand)?.label} {item.model} {item.variant} x{item.qty}</span><span className="text-white">₹{item.val}</span></div>)}
+                                    <Button onClick={handleSave} className="w-full mt-3">Save</Button>
                                 </div>
                             )}
-
-                             {salesData[currentDate]?.models && (
-                                <Card className="border-l-4 border-l-brand-500">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Today's Log</h4>
-                                    <pre className="text-xs text-slate-500 font-mono whitespace-pre-wrap">{salesData[currentDate].models}</pre>
+                            {salesData[currentDate] && (
+                                <Card className="border-l-4 border-l-brand-500 max-h-64 overflow-y-auto">
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Today's Sales</h4>
+                                    {[...salesData[currentDate]].reverse().map((t,i) => (
+                                        <div key={i} className="flex justify-between text-xs py-1 border-b border-slate-800">
+                                            <span className="text-slate-300">{t.time} - {brands.find(b=>b.key===t.brand)?.label} {t.model} {t.variant} x{t.qty}</span>
+                                            <span className="text-emerald-400 font-bold">₹{t.val}</span>
+                                        </div>
+                                    ))}
                                 </Card>
                             )}
                         </div>
                     )}
 
-                    {/* VIEW: REPORT (Accordion Style) */}
                     {view === 'report' && (
                         <div className="space-y-6">
-                            <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Report Month</span>
-                                <input 
-                                    type="month" 
-                                    value={reportMonth} 
-                                    onChange={(e)=>setReportMonth(e.target.value)} 
-                                    className="bg-transparent text-white font-bold outline-none text-right"
-                                />
-                            </div>
-
-                            {/* Summary Cards */}
+                            <div className="flex justify-between bg-slate-800 p-3 rounded-xl"><span className="text-xs font-bold text-slate-400 uppercase pt-1">Month</span><input type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right"/></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <Card className="p-4 bg-gradient-to-br from-indigo-900/50 to-slate-900">
-                                    <div className="text-xs text-indigo-300 uppercase font-bold mb-1">FTD (Today)</div>
-                                    <div className="text-2xl font-bold text-white">{stats.ftd.vol}</div>
-                                    <div className="text-xs text-indigo-400">₹{(stats.ftd.val/1000).toFixed(1)}k</div>
-                                </Card>
-                                <Card className="p-4 bg-gradient-to-br from-brand-900/50 to-slate-900">
-                                    <div className="text-xs text-brand-300 uppercase font-bold mb-1">MTD ({reportMonth})</div>
-                                    <div className="text-2xl font-bold text-white">{stats.mtd.vol}</div>
-                                    <div className="text-xs text-brand-400">₹{(stats.mtd.val/1000).toFixed(1)}k</div>
-                                </Card>
+                                <Card className="p-4 bg-indigo-900/30"><div className="text-xs text-indigo-300 font-bold uppercase">Today</div><div className="text-2xl font-bold text-white">{getStats.ftd.vol}</div><div className="text-xs text-indigo-400">₹{(getStats.ftd.val/1000).toFixed(1)}k</div></Card>
+                                <Card className="p-4 bg-brand-900/30"><div className="text-xs text-brand-300 font-bold uppercase">MTD</div><div className="text-2xl font-bold text-white">{getStats.mtd.vol}</div><div className="text-xs text-brand-400">₹{(getStats.mtd.val/1000).toFixed(1)}k</div></Card>
                             </div>
-
-                            {/* Brand Breakdown Accordion */}
                             <Card className="p-0 overflow-hidden">
-                                {brandsList.map(b => (
-                                    <details key={b.key} className="group border-b border-slate-800 last:border-0">
-                                        <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-800/50">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-3 h-3 rounded-full" style={{backgroundColor: b.color}}></div>
-                                                <span className="font-bold text-white">{b.label}</span>
+                                {brands.map(b => {
+                                    const bData = getStats.grouped[b.key];
+                                    return (
+                                        <details key={b.key} className="group border-b border-slate-800 last:border-0">
+                                            <summary className="flex justify-between p-4 cursor-pointer hover:bg-slate-800/50"><div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full" style={{backgroundColor:b.color}}></div><span className="font-bold text-white">{b.label}</span></div><div className="text-right flex items-center gap-4"><div><span className="block font-bold text-white text-sm">{getStats.mtd.byBrand[b.key]?.vol||0}u</span></div><LucideIcon name="chevron-down" size={16} /></div></summary>
+                                            <div className="px-4 pb-4 bg-slate-900/30 space-y-2">
+                                                {bData ? Object.entries(bData.models).map(([mName, mData]) => (
+                                                    <div key={mName} className="bg-slate-800/50 rounded p-2">
+                                                        <div className="flex justify-between text-xs font-bold text-slate-300 pb-1 border-b border-slate-700/50"><span>{mName}</span><span>{mData.vol}u</span></div>
+                                                        {Object.entries(mData.variants).map(([vName, vData]) => <div key={vName} className="flex justify-between text-[10px] text-slate-400 pt-1 pl-2"><span>{vName}</span><span>{vData.vol}u</span></div>)}
+                                                    </div>
+                                                )) : <p className="text-xs text-slate-500 italic">No sales.</p>}
                                             </div>
-                                            <div className="text-right flex items-center gap-4">
-                                                <div>
-                                                    <span className="block font-bold text-white text-sm">{stats.mtd.breakdownVol[b.key]} units</span>
-                                                    <span className="block text-[10px] text-slate-500">₹{(stats.mtd.breakdownVal[b.key]/1000).toFixed(1)}k</span>
-                                                </div>
-                                                <LucideIcon name="chevron-down" className="text-slate-500 transition-transform group-open:rotate-180" size={16} />
-                                            </div>
-                                        </summary>
-                                        <div className="px-4 pb-4 bg-slate-900/30">
-                                            {/* Logic to show breakdown by model would go here if we parsed the logs fully,
-                                                but for now we just show the summary as the logs are string based.
-                                                Future improvement: Structured DB for logs. */}
-                                            <p className="text-xs text-slate-500 italic">Detailed model breakdown requires structured logging.</p>
-                                        </div>
-                                    </details>
-                                ))}
+                                        </details>
+                                    );
+                                })}
                             </Card>
-
-                            {/* Footer Summary */}
-                            <div className="p-4 bg-slate-900 border-t border-slate-800 text-center rounded-xl">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Total Volume Share</h4>
-                                <div className="flex flex-wrap justify-center gap-2">
-                                    {brandsList.map(b => (
-                                        <span key={b.key} className="text-[10px] px-2 py-1 bg-slate-800 rounded text-slate-300">
-                                            {b.label}: <span className="text-white font-bold">{stats.mtd.breakdownVol[b.key]}</span>
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
                         </div>
                     )}
 
-                    {/* VIEW: ANALYTICS */}
                     {view === 'analytics' && (
                         <div className="space-y-6">
-                            <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700">
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Analysis Month</span>
-                                <input 
-                                    type="month" 
-                                    value={reportMonth} 
-                                    onChange={(e)=>setReportMonth(e.target.value)} 
-                                    className="bg-transparent text-white font-bold outline-none text-right"
-                                />
-                            </div>
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <Card>
-                                    <canvas ref={pieChartRef}></canvas>
-                                </Card>
-                                <Card>
-                                    <canvas ref={barChartRef}></canvas>
-                                </Card>
-                            </div>
-
-                            {/* Price Segmentation (Hypothetical Data from logs) */}
-                             <Card>
-                                <h3 className="font-bold text-white mb-4">Price Segmentation (Est.)</h3>
+                            <div className="flex justify-between bg-slate-800 p-3 rounded-xl"><span className="text-xs font-bold text-slate-400 uppercase pt-1">Month</span><input type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right"/></div>
+                            <div className="grid md:grid-cols-2 gap-4"><Card><canvas ref={pieChartRef}></canvas></Card><Card><canvas ref={barChartRef}></canvas></Card></div>
+                            <Card>
+                                <h3 className="font-bold text-white mb-4">Price Segmentation</h3>
                                 <div className="space-y-3">
-                                    {['< 10k', '10k - 20k', '20k - 30k', '> 30k'].map((seg, i) => {
-                                        // Mock logic for display as we store raw totals per brand
-                                        // Real implementation would need to parse the log strings or store itemized DB
-                                        const val = Math.floor(stats.mtd.vol * [0.2, 0.4, 0.3, 0.1][i]);
-                                        return (
-                                            <div key={i}>
-                                                <div className="flex justify-between text-xs text-slate-400 mb-1">
-                                                    <span>{seg}</span>
-                                                    <span>{val} units</span>
-                                                </div>
-                                                <div className="h-1.5 bg-slate-800 rounded-full">
-                                                    <div className="h-full bg-indigo-500 rounded-full" style={{width: `${(val/stats.mtd.vol)*100}%`}}></div>
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                    <p className="text-[10px] text-slate-500 mt-2 italic">* Segmentation is estimated based on distribution.</p>
+                                    {Object.entries(getStats.segments).map(([seg, val]) => (
+                                        <div key={seg}>
+                                            <div className="flex justify-between text-xs text-slate-400 mb-1"><span>{seg}</span><span>{val} u</span></div>
+                                            <div className="h-1.5 bg-slate-800 rounded-full"><div className="h-full bg-brand-500 rounded-full" style={{width: `${getStats.mtd.vol>0 ? (val/getStats.mtd.vol)*100 : 0}%`}}></div></div>
+                                        </div>
+                                    ))}
                                 </div>
                             </Card>
                         </div>
                     )}
 
-                    {/* VIEW: PROFILE */}
                     {view === 'profile' && (
-                        <div className="space-y-6">
-                            <Card>
-                                <div className="text-center mb-6">
-                                    <div className="w-20 h-20 bg-slate-800 rounded-full mx-auto flex items-center justify-center mb-3">
-                                        <LucideIcon name="user" size={32} className="text-slate-500" />
-                                    </div>
-                                    <h3 className="font-bold text-white text-lg">Profile Settings</h3>
-                                </div>
-                                <div className="space-y-4">
-                                    <Input label="Name" value={profile.name} onChange={(e)=>setProfile({...profile, name: e.target.value})} />
-                                    <Input label="Outlet Name" value={profile.outlet} onChange={(e)=>setProfile({...profile, outlet: e.target.value})} />
-                                    {/* Removed Target inputs as requested, moved to global settings/logic if needed, or kept hidden */}
-                                    <div className="flex gap-4 pt-4">
-                                        <Button onClick={backupProfile} variant="secondary" className="w-1/2" icon="download">Backup Profile</Button>
-                                        <div className="relative w-1/2">
-                                            <input type="file" id="prof-restore" className="hidden" accept=".json" onChange={restoreProfile} />
-                                            <label htmlFor="prof-restore" className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl font-bold text-sm bg-slate-700 text-slate-200 hover:bg-slate-600 cursor-pointer transition-all">
-                                                <LucideIcon name="upload" size={18}/> Restore Profile
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </Card>
-
-                             {/* Footer Summary in Profile */}
-                            <div className="p-4 bg-slate-900 border-t border-slate-800 text-center rounded-xl">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Lifetime Volume by Brand</h4>
-                                <div className="flex flex-wrap justify-center gap-2">
-                                    {brandsList.map(b => {
-                                        // Calculate Lifetime
-                                        let total = 0;
-                                        Object.values(salesData).forEach(d => total += (d[b.key] || 0));
-                                        return (
-                                            <span key={b.key} className="text-[10px] px-2 py-1 bg-slate-800 rounded text-slate-300">
-                                                {b.label}: <span className="text-white font-bold">{total}</span>
-                                            </span>
-                                        );
-                                    })}
+                        <Card>
+                            <div className="text-center mb-6"><div className="w-16 h-16 bg-slate-800 rounded-full mx-auto flex items-center justify-center mb-3"><LucideIcon name="user" size={32} className="text-slate-500" /></div><h3 className="font-bold text-white">Profile</h3></div>
+                            <div className="space-y-4">
+                                <Input label="Name" value={profile.name} onChange={e=>setProfile({...profile, name: e.target.value})} />
+                                <Input label="Outlet" value={profile.outlet} onChange={e=>setProfile({...profile, outlet: e.target.value})} />
+                                <div className="grid grid-cols-2 gap-4 pt-4">
+                                    <Button variant="secondary" onClick={()=>{const b = new Blob([JSON.stringify(profile)],{type:"application/json"}); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download="SEH_Profile.json"; a.click();}}>Backup</Button>
+                                    <div className="relative"><input type="file" id="prf" className="hidden" onChange={(e)=>{const f=e.target.files[0]; if(f){const r=new FileReader(); r.onload=(ev)=>{setProfile(JSON.parse(ev.target.result)); toast.addToast("Restored","success");}; r.readAsText(f);}}} /><label htmlFor="prf" className="flex items-center justify-center w-full h-full bg-slate-700 rounded-xl font-bold text-sm text-slate-200 cursor-pointer">Restore</label></div>
                                 </div>
                             </div>
-                        </div>
+                        </Card>
                     )}
                 </div>
             );
-        };
-        const IncentiveCalculator = () => {
-            const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
-            const [settings, setSettings] = useState({ channel: 'standard', status: 'existing', enforceGates: false });
-            const toast = useToast();
-            const confirm = useConfirm();
-            
-            // Default Config
-            const DEFAULTS = {
+       };
+
+       // --- INCENTIVE CALC (Full Logic Restored) ---
+       const IncentiveCalculator = () => {
+           const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
+           const [settings, setSettings] = useState({ channel: 'standard', status: 'existing', enforceGates: false });
+           const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('sec_incentive_config')) || {
                 sp: {
                     slabs: [{min: 100000, rate: 700, label: ">= 100k"}, {min: 70000, rate: 600, label: "70k - 100k"}, {min: 40000, rate: 500, label: "40k - 70k"}, {min: 30000, rate: 300, label: "30k - 40k"}, {min: 20000, rate: 200, label: "20k - 30k"}, {min: 15000, rate: 100, label: "15k - 20k"}, {min: 10000, rate: 75, label: "10k - 15k"}, {min: 0, rate: 25, label: "< 10k"}],
                     gates: { std: [{min: 40, p: 1.0}, {min: 35, p: 0.75}, {min: 30, p: 0.6}], sis: [{min: 40, p: 1.0}, {min: 35, p: 1.0}, {min: 30, p: 0.75}, {min: 25, p: 0.5}] },
-                    fm_mult: 0.5, target_thresh: 0.8
+                    fm_mult: 0.5
                 },
                 tb: { slabs: [{min:70000,rate:800},{min:40000,rate:600},{min:30000,rate:500},{min:20000,rate:300},{min:15000,rate:200},{min:10000,rate:100}], focus: [{name:"S11 Ultra", rate:1500}, {name:"S11/S10+", rate:1000}, {name:"S10 Lite", rate:750}, {name:"A11 Plus", rate:400}] },
                 wr: [{name:"Watch Ultra / 8 Cls", rate:1200}, {name:"Other Watches", rate:800}, {name:"Buds3 Pro", rate:600}, {name:"Buds3 / FE", rate:500}, {name:"Other Buds", rate:400}, {name:"Ring", rate:0}],
@@ -1327,65 +853,36 @@
                 bun: { std: [{name:"Wr+Hr", rate:750}, {name:"Wearable", rate:400}, {name:"Hearable", rate:250}], excl: [{name:"Wr+Hr+Acc", rate:1000}, {name:"Wr+Hr", rate:750}, {name:"Wearable", rate:400}, {name:"Hearable", rate:250}, {name:"Acc", rate:100}] },
                 acc: [{min:4, rate:3000}, {min:3, rate:2000}, {min:2, rate:1000}, {min:1, rate:500}],
                 caps: { global:75000, tb:20000, npc:50000, bun:10000 }
-            };
+           });
+           const [extra, setExtra] = useState({ accVal:0, accBase:0, k_ff7:0, t_ff7:'low', k_s25:0, t_s25:'low' });
+           const [result, setResult] = useState({ total: 0, logs: [] });
+           const [showSettings, setShowSettings] = useState(false);
 
-            const [config, setConfig] = useState(() => {
-                const s = localStorage.getItem('sec_incentive_config');
-                return s ? JSON.parse(s) : DEFAULTS;
-            });
+           useEffect(() => localStorage.setItem('sec_incentive_config', JSON.stringify(config)), [config]);
 
-            useEffect(() => { localStorage.setItem('sec_incentive_config', JSON.stringify(config)); }, [config]);
-
-            const [extra, setExtra] = useState({
-                accVal: 0, accBase: 0,
-                k_ff7: 0, t_ff7: 'low',
-                k_s25: 0, t_s25: 'low'
-            });
-
-            const [result, setResult] = useState({ total: 0, logs: [] });
-            const [showConfigModal, setShowConfigModal] = useState(false); // Replaces showConfig textarea
-
-            // --- CALCULATION LOGIC (Same as before) ---
-            const calculateIncentive = () => {
-                let logs = [];
-                let total = 0;
+           useEffect(() => {
+                let logs = []; let total = 0;
                 const c = config;
                 const chan = settings.channel;
                 const isExempt = (chan === 'sis_pro' || settings.status === 'new_joinee');
 
                 // 1. SP
                 let spQ = 0, spRaw = 0;
-                rows.sp.forEach(r => {
-                    if(r.qty > 0) { spQ += r.qty; spRaw += r.qty * (r.fm ? r.rate * c.sp.fm_mult : r.rate); }
-                });
-                
+                rows.sp.forEach(r => { if(r.qty > 0) { spQ += r.qty; spRaw += r.qty * (r.fm ? r.rate * c.sp.fm_mult : r.rate); } });
                 const gateSet = isExempt ? c.sp.gates.sis : c.sp.gates.std;
                 let gateM = 0, gateN = "Missed Gate";
                 for(let g of gateSet) { if(spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
-                
                 let spFin = spRaw * gateM;
-                
                 if (gateM === 0) {
-                    if (settings.enforceGates) {
-                        gateN = `Missed Vol Gate (${spQ}) - Zeroed`;
-                        spFin = 0; 
-                    } else {
-                        gateN = `Missed Vol Gate (${spQ}) - Ignored`;
-                        spFin = spRaw;
-                    }
+                    if (settings.enforceGates) { gateN = `Missed Vol Gate (${spQ}) - Zeroed`; spFin = 0; }
+                    else { gateN = `Missed Vol Gate (${spQ}) - Ignored`; spFin = spRaw; }
                 }
-
-                logs.push({ cat: "Smartphones", note: gateN, val: spFin, raw: spRaw });
+                logs.push({ cat: "Smartphones", note: gateN, val: spFin });
                 total += spFin;
 
                 // 2. TB
                 let tbTot = 0, a11 = 0;
-                rows.tb.forEach(r => {
-                    if(r.qty > 0) {
-                        if(r.type === 'a11') a11 += r.qty;
-                        else tbTot += r.qty * r.rate;
-                    }
-                });
+                rows.tb.forEach(r => { if(r.qty > 0) { if(r.type === 'a11') a11 += r.qty; else tbTot += r.qty * r.rate; } });
                 if(a11>=3) tbTot+=a11*400; else if(a11===2) tbTot+=a11*300; else if(a11===1) tbTot+=a11*250;
                 const tbFin = Math.min(tbTot, c.caps.tb);
                 logs.push({ cat: "Tablets", note: tbTot>tbFin?"Capped":"", val: tbFin });
@@ -1393,23 +890,14 @@
 
                 // 3. WR
                 let wrTot = 0, ring = 0;
-                rows.wr.forEach(r => {
-                    if(r.qty > 0) {
-                        if(c.wr[r.idx]?.name.toLowerCase().includes('ring')) ring += r.qty;
-                        else wrTot += r.qty * c.wr[r.idx]?.rate;
-                    }
-                });
+                rows.wr.forEach(r => { if(r.qty > 0) { if(c.wr[r.idx]?.name.toLowerCase().includes('ring')) ring += r.qty; else wrTot += r.qty * c.wr[r.idx]?.rate; } });
                 if(ring>=3) wrTot+=5000; else if(ring===2) wrTot+=4000; else if(ring===1) wrTot+=3000;
                 logs.push({ cat: "Wearables", note: "", val: wrTot });
                 total += wrTot;
 
-                // 4. Global Cap Check
+                // 4. Global Cap
                 let comb = spFin + wrTot;
-                if(comb > c.caps.global) {
-                    const capAdj = c.caps.global - comb; 
-                    logs.push({ cat: "Global Cap Adj", note: "Max 75k", val: capAdj });
-                    total += capAdj; // negative
-                }
+                if(comb > c.caps.global) { logs.push({ cat: "Global Cap Adj", note: "Max 75k", val: c.caps.global - comb }); total += (c.caps.global - comb); }
 
                 // 5. CP
                 let cpTot = 0, cpQ = 0;
@@ -1430,13 +918,10 @@
                 logs.push({ cat: "Note PC", note: npcTot>npcFin?"Capped":"", val: npcFin });
                 total += npcFin;
 
-                // 7. Bundles
+                // 7. Bun
                 let bunTot = 0;
                 const bunList = (chan === 'exclusive') ? c.bun.excl : c.bun.std;
-                Object.keys(rows.bun).forEach(k => {
-                    const qty = rows.bun[k] || 0;
-                    if(bunList[k]) bunTot += qty * bunList[k].rate;
-                });
+                Object.keys(rows.bun).forEach(k => { const qty = rows.bun[k] || 0; if(bunList[k]) bunTot += qty * bunList[k].rate; });
                 if(chan !== 'exclusive') bunTot = Math.min(bunTot, c.caps.bun);
                 logs.push({ cat: "Bundles", note: "", val: bunTot });
                 total += bunTot;
@@ -1452,398 +937,75 @@
                 total += accTot;
 
                 setResult({ total, logs });
-            };
+           }, [rows, extra, config, settings]);
 
-            useEffect(() => {
-                calculateIncentive();
-            }, [rows, settings, extra, config]);
+           const addRow = (k, d={}) => setRows(p => ({...p, [k]: [...p[k], {id:Date.now(), qty:1, rate:0, idx:0, ...d}]}));
+           const delRow = (k, id) => setRows(p => ({...p, [k]: p[k].filter(r => r.id !== id)}));
+           const updateRow = (k, id, f, v) => setRows(p => ({...p, [k]: p[k].map(r => r.id===id ? {...r, [f]:v} : r)}));
 
-            // --- HANDLERS ---
-            const addRow = (type, data = {}) => {
-                setRows(prev => {
-                    const newRow = { id: Date.now(), qty: 1, ...data };
-                    // Set defaults
-                    if(type === 'sp') newRow.rate = config.sp.slabs[0].rate;
-                    if(type === 'tb') { newRow.type = 'f'; newRow.rate = config.tb.focus[0].rate; }
-                    if(type === 'cp') newRow.rate = config.cp.slabs[0].rate;
-                    if(type === 'npc') newRow.rate = config.npc[0].rate;
-                    if(type === 'wr') { newRow.idx = 0; }
-                    return { ...prev, [type]: [...prev[type], newRow] };
-                });
-            };
+           return (
+               <div className="pb-24 animate-fade-in space-y-4">
+                   <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} config={config} setConfig={setConfig} />
+                   <div className="bg-emerald-900/20 p-6 rounded-3xl border border-emerald-500/30 flex justify-between items-center">
+                       <div><h2 className="text-3xl font-bold text-white">₹{Math.floor(result.total).toLocaleString()}</h2><p className="text-emerald-400 text-xs font-bold uppercase">Payout</p></div>
+                       <div className="flex gap-2"><button onClick={()=>setRows({sp:[],tb:[],wr:[],cp:[],npc:[],bun:[]})} className="p-3 bg-red-500/10 rounded-xl text-red-400"><LucideIcon name="trash-2" /></button><button onClick={()=>setShowSettings(true)} className="p-3 bg-white/10 rounded-xl text-white"><LucideIcon name="settings" /></button></div>
+                   </div>
 
-            const updateRow = (type, id, field, val) => {
-                setRows(prev => ({
-                    ...prev,
-                    [type]: prev[type].map(r => r.id === id ? { ...r, [field]: val } : r)
-                }));
-            };
+                   <Card className="border-l-4 border-l-blue-500">
+                       <div className="flex justify-between mb-2"><h3 className="font-bold text-white">Smartphones</h3><button onClick={()=>{const d={rate:config.sp.slabs[0].rate}; addRow('sp',d)}} className="text-blue-400 text-xs">+ Add</button></div>
+                       {rows.sp.map(r => (
+                           <div key={r.id} className="flex gap-2 mb-2 items-center">
+                               <select className="flex-1 bg-slate-800 rounded p-1 text-white text-xs" value={r.rate} onChange={e=>updateRow('sp',r.id,'rate',Number(e.target.value))}>{config.sp.slabs.map((s,i)=><option key={i} value={s.rate}>{s.min}+ (₹{s.rate})</option>)}</select>
+                               <input type="number" className="w-12 bg-slate-800 rounded p-1 text-white text-xs text-center" value={r.qty} onChange={e=>updateRow('sp',r.id,'qty',Number(e.target.value))} />
+                               <div className="flex items-center"><input type="checkbox" checked={r.fm} onChange={e=>updateRow('sp',r.id,'fm',e.target.checked)} /><span className="text-[10px] text-slate-400 ml-1">FM</span></div>
+                               <button onClick={()=>delRow('sp',r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
+                           </div>
+                       ))}
+                   </Card>
 
-            const delRow = (type, id) => {
-                setRows(prev => ({ ...prev, [type]: prev[type].filter(r => r.id !== id) }));
-            };
-            
-            const clearAll = () => {
-                confirm({
-                    title: "Clear All Entries?",
-                    message: "This will remove all entered data. Are you sure?",
-                    isDanger: true,
-                    onConfirm: () => {
-                        setRows({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
-                        setExtra({ accVal: 0, accBase: 0, k_ff7: 0, t_ff7: 'low', k_s25: 0, t_s25: 'low' });
-                        toast.addToast("Cleared all entries.", "info");
-                    }
-                });
-            };
+                   <Card className="border-l-4 border-l-purple-500">
+                       <div className="flex justify-between mb-2"><h3 className="font-bold text-white">Wearables</h3><button onClick={()=>addRow('wr')} className="text-purple-400 text-xs">+ Add</button></div>
+                       {rows.wr.map(r => (
+                           <div key={r.id} className="flex gap-2 mb-2 items-center">
+                               <select className="flex-1 bg-slate-800 rounded p-1 text-white text-xs" value={r.idx} onChange={e=>updateRow('wr',r.id,'idx',Number(e.target.value))}>{config.wr.map((w,i)=><option key={i} value={i}>{w.name}</option>)}</select>
+                               <input type="number" className="w-12 bg-slate-800 rounded p-1 text-white text-xs text-center" value={r.qty} onChange={e=>updateRow('wr',r.id,'qty',Number(e.target.value))} />
+                               <button onClick={()=>delRow('wr',r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
+                           </div>
+                       ))}
+                   </Card>
 
-            return (
-                <div className="pb-24 animate-fade-in space-y-6">
-                    <SettingsModal isOpen={showConfigModal} onClose={()=>setShowConfigModal(false)} config={config} setConfig={setConfig} />
+                   {/* Collapsed view for others to save space, but functional */}
+                   <div className="grid grid-cols-2 gap-4">
+                        <Button variant="secondary" onClick={()=>addRow('cp', {rate: config.cp.slabs[0].rate})} icon="plus">Care+</Button>
+                        <Button variant="secondary" onClick={()=>addRow('tb', {rate: config.tb.slabs[0].rate})} icon="plus">Tablet</Button>
+                   </div>
 
-                    {/* Header / Summary */}
-                    <div className="bg-gradient-to-r from-emerald-900 to-slate-900 p-6 rounded-3xl border border-emerald-500/30 shadow-lg relative overflow-hidden">
-                         <div className="relative z-10 flex justify-between items-center">
-                            <div>
-                                <h2 className="text-3xl font-bold text-white mb-1">₹{Math.floor(result.total).toLocaleString()}</h2>
-                                <p className="text-emerald-400 text-sm font-bold uppercase tracking-wider">Estimated Payout</p>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={calculateIncentive} className="px-4 py-3 bg-white text-emerald-900 font-bold rounded-xl shadow-lg hover:bg-emerald-50 transition-all flex items-center gap-2">
-                                    <LucideIcon name="calculator" size={18} /> Calculate
-                                </button>
-                                <button onClick={clearAll} className="p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-colors" title="Clear All"><LucideIcon name="trash-2" /></button>
-                                <button onClick={() => setShowConfigModal(true)} className="p-3 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors" title="Settings"><LucideIcon name="settings" /></button>
-                            </div>
-                         </div>
-                         {/* Breakdown Toggle/View */}
-                         <div className="relative z-10 mt-4 pt-4 border-t border-white/10">
-                            <div className="space-y-2">
-                                {result.logs.map((l, i) => (
-                                    <div key={i} className="flex justify-between items-center text-xs">
-                                        <span className="text-slate-300">{l.cat}</span>
-                                        <div className="text-right">
-                                            <span className={`font-bold ${l.val > 0 ? 'text-white' : 'text-slate-500'}`}>₹{Math.floor(l.val).toLocaleString()}</span>
-                                            {l.note && <span className="block text-[10px] text-red-400">{l.note}</span>}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                         </div>
-                    </div>
+                   {/* Logs/Breakdown */}
+                   <div className="space-y-1 bg-slate-800/50 p-3 rounded-xl">
+                       {result.logs.map((l,i) => <div key={i} className="flex justify-between text-xs text-slate-400"><span>{l.cat} {l.note && `(${l.note})`}</span><span className="text-white">₹{Math.floor(l.val).toLocaleString()}</span></div>)}
+                   </div>
+               </div>
+           );
+       };
 
-                    {/* Settings Bar */}
-                    <Card>
-                        <div className="grid grid-cols-3 gap-4">
-                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Channel</label>
-                                <select className="w-full bg-slate-800 text-white text-xs p-2 rounded-lg mt-1 outline-none" value={settings.channel} onChange={e=>setSettings({...settings, channel: e.target.value})}>
-                                    <option value="standard">Standard</option>
-                                    <option value="sis_pro">SIS Pro</option>
-                                    <option value="exclusive">Exclusive</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</label>
-                                <select className="w-full bg-slate-800 text-white text-xs p-2 rounded-lg mt-1 outline-none" value={settings.status} onChange={e=>setSettings({...settings, status: e.target.value})}>
-                                    <option value="existing">Existing</option>
-                                    <option value="new_joinee">New Joinee</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Strict Mode</label>
-                                <div className="flex items-center gap-2 mt-2">
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4 rounded bg-slate-800 border-slate-600"
-                                        checked={settings.enforceGates} 
-                                        onChange={e=>setSettings({...settings, enforceGates: e.target.checked})}
-                                    />
-                                    <span className="text-xs text-white">Enforce Gates</span>
-                                </div>
-                            </div>
-                        </div>
-                    </Card>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* 1. SMARTPHONES */}
-                        <Card className="border-l-4 border-l-blue-500">
-                            <div className="flex justify-between mb-4">
-                                <h3 className="font-bold text-white flex items-center gap-2"><LucideIcon name="smartphone" size={18} className="text-blue-400"/> Smartphones</h3>
-                                <button onClick={() => addRow('sp')} className="text-xs bg-blue-500/20 text-blue-400 px-2 py-1 rounded hover:bg-blue-500/30">+ Add</button>
-                            </div>
-                            <div className="space-y-2">
-                                {rows.sp.map(r => (
-                                    <div key={r.id} className="flex gap-2 items-center">
-                                        <select className="bg-slate-800 text-white text-xs p-2 rounded flex-1 min-w-0" value={r.rate} onChange={e=>updateRow('sp', r.id, 'rate', Number(e.target.value))}>
-                                            {config.sp.slabs.map((s,i) => <option key={i} value={s.rate}>{s.label || `>=${s.min}`} (₹{s.rate})</option>)}
-                                        </select>
-                                        <input type="number" className="bg-slate-800 text-white text-xs p-2 rounded w-12 text-center shrink-0" value={r.qty} onChange={e=>updateRow('sp', r.id, 'qty', Number(e.target.value))} />
-                                        <div className="flex items-center gap-1 bg-slate-800 p-1.5 rounded shrink-0">
-                                            <input type="checkbox" checked={r.fm} onChange={e=>updateRow('sp', r.id, 'fm', e.target.checked)} />
-                                            <span className="text-[10px] font-bold text-slate-400">FM</span>
-                                        </div>
-                                        <button onClick={()=>delRow('sp', r.id)} className="text-red-400 p-1 hover:bg-slate-800 rounded shrink-0"><LucideIcon name="trash" size={16}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-
-                        {/* 2. TABLETS */}
-                        <Card className="border-l-4 border-l-emerald-500">
-                            <div className="flex justify-between mb-4">
-                                <h3 className="font-bold text-white flex items-center gap-2"><LucideIcon name="tablet" size={18} className="text-emerald-400"/> Tablets</h3>
-                                <button onClick={() => addRow('tb')} className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded hover:bg-emerald-500/30">+ Add</button>
-                            </div>
-                             <div className="space-y-2">
-                                {rows.tb.map(r => (
-                                    <div key={r.id} className="flex gap-2 items-center">
-                                        <select className="bg-slate-800 text-white text-xs p-2 rounded flex-1 min-w-0" value={r.rate} onChange={e=>{
-                                            const v = Number(e.target.value);
-                                            const t = e.target.selectedOptions[0].dataset.type;
-                                            updateRow('tb', r.id, 'rate', v);
-                                            updateRow('tb', r.id, 'type', t);
-                                        }}>
-                                            <optgroup label="Focus">
-                                                {config.tb.focus.map((f,i) => <option key={`f${i}`} value={f.rate} data-type="f">{f.name} ({f.rate})</option>)}
-                                            </optgroup>
-                                            <option value="0" data-type="a11">A11 Tiered</option>
-                                            <optgroup label="Slabs">
-                                                {config.tb.slabs.map((s,i) => <option key={`s${i}`} value={s.rate} data-type="s">{s.label || `>=${s.min}`} ({s.rate})</option>)}
-                                            </optgroup>
-                                        </select>
-                                        <input type="number" className="bg-slate-800 text-white text-xs p-2 rounded w-12 text-center shrink-0" value={r.qty} onChange={e=>updateRow('cp', r.id, 'qty', Number(e.target.value))} />
-                                        <button onClick={()=>delRow('cp', r.id)} className="text-red-400 p-1 hover:bg-slate-800 rounded shrink-0"><LucideIcon name="trash" size={16}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-
-                        {/* 3. WEARABLES */}
-                        <Card className="border-l-4 border-l-purple-500">
-                            <div className="flex justify-between mb-4">
-                                <h3 className="font-bold text-white flex items-center gap-2"><LucideIcon name="watch" size={18} className="text-purple-400"/> Wearables</h3>
-                                <button onClick={() => addRow('wr')} className="text-xs bg-purple-500/20 text-purple-400 px-2 py-1 rounded hover:bg-purple-500/30">+ Add</button>
-                            </div>
-                            <div className="space-y-2">
-                                {rows.wr.map(r => (
-                                    <div key={r.id} className="flex gap-2 items-center">
-                                        <select className="bg-slate-800 text-white text-xs p-2 rounded w-full" value={r.idx} onChange={e=>updateRow('wr', r.id, 'idx', Number(e.target.value))}>
-                                            {config.wr.map((w,i) => <option key={i} value={i}>{w.name} ({w.rate})</option>)}
-                                        </select>
-                                        <input type="number" className="bg-slate-800 text-white text-xs p-2 rounded w-16 text-center" value={r.qty} onChange={e=>updateRow('wr', r.id, 'qty', Number(e.target.value))} />
-                                        <button onClick={()=>delRow('wr', r.id)} className="text-red-400"><LucideIcon name="trash" size={14}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-
-                        {/* 4. CARE+ & KICKERS */}
-                         <Card className="border-l-4 border-l-red-500">
-                            <div className="flex justify-between mb-4">
-                                <h3 className="font-bold text-white flex items-center gap-2"><LucideIcon name="shield" size={18} className="text-red-400"/> Care+ & Kickers</h3>
-                                <button onClick={() => addRow('cp')} className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded hover:bg-red-500/30">+ Add</button>
-                            </div>
-                            <div className="space-y-2 mb-4">
-                                {rows.cp.map(r => (
-                                    <div key={r.id} className="flex gap-2 items-center">
-                                        <select className="bg-slate-800 text-white text-xs p-2 rounded w-full" value={r.rate} onChange={e=>updateRow('cp', r.id, 'rate', Number(e.target.value))}>
-                                            {config.cp.slabs.map((s,i) => <option key={i} value={s.rate}>{s.label || `>=${s.min}`} (₹{s.rate})</option>)}
-                                        </select>
-                                        <input type="number" className="bg-slate-800 text-white text-xs p-2 rounded w-16 text-center" value={r.qty} onChange={e=>updateRow('cp', r.id, 'qty', Number(e.target.value))} />
-                                        <button onClick={()=>delRow('cp', r.id)} className="text-red-400"><LucideIcon name="trash" size={14}/></button>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div className="bg-slate-800 p-2 rounded">
-                                    <span className="block text-slate-400 mb-1">FF7 Kicker</span>
-                                    <div className="flex gap-1">
-                                        <input type="number" placeholder="Qty" className="w-full bg-slate-700 p-1 rounded text-white" value={extra.k_ff7} onChange={e=>setExtra({...extra, k_ff7: Number(e.target.value)})} />
-                                        <select className="bg-slate-700 text-white rounded" value={extra.t_ff7} onChange={e=>setExtra({...extra, t_ff7: e.target.value})}><option value="low">Low</option><option value="high">High</option></select>
-                                    </div>
-                                </div>
-                                <div className="bg-slate-800 p-2 rounded">
-                                    <span className="block text-slate-400 mb-1">S25 Kicker</span>
-                                    <div className="flex gap-1">
-                                        <input type="number" placeholder="Qty" className="w-full bg-slate-700 p-1 rounded text-white" value={extra.k_s25} onChange={e=>setExtra({...extra, k_s25: Number(e.target.value)})} />
-                                        <select className="bg-slate-700 text-white rounded" value={extra.t_s25} onChange={e=>setExtra({...extra, t_s25: e.target.value})}><option value="low">Low</option><option value="high">High</option></select>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-                        
-                        {/* 5. BUNDLES & ACC */}
-                        <Card className="border-l-4 border-l-orange-500 md:col-span-2">
-                             <div className="flex justify-between mb-4">
-                                <h3 className="font-bold text-white flex items-center gap-2"><LucideIcon name="package" size={18} className="text-orange-400"/> Bundles & Accessories</h3>
-                            </div>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                                {((settings.channel === 'exclusive' ? config.bun.excl : config.bun.std) || []).map((b, i) => (
-                                    <div key={i} className="bg-slate-800 p-2 rounded text-center">
-                                        <div className="text-[10px] font-bold text-slate-400 truncate uppercase">{b.name}</div>
-                                        <div className="flex items-center justify-center gap-1 mt-1">
-                                            <span className="text-xs text-slate-500">₹{b.rate} x</span>
-                                            <input type="number" className="w-10 bg-slate-700 text-white text-xs p-1 rounded text-center" value={rows.bun[i] || ''} onChange={e => setRows(prev => ({ ...prev, bun: { ...prev.bun, [i]: parseInt(e.target.value) || 0 } }))} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex gap-4 items-center border-t border-slate-700 pt-3">
-                                <span className="text-xs font-bold text-slate-400">Accessories</span>
-                                <input type="number" placeholder="Acc Value" className="w-24 bg-slate-800 text-white text-xs p-2 rounded" value={extra.accVal||''} onChange={e=>setExtra({...extra, accVal: Number(e.target.value)})} />
-                                <input type="number" placeholder="Base Val (Auto)" className="w-24 bg-slate-800 text-white text-xs p-2 rounded" value={extra.accBase||''} onChange={e=>setExtra({...extra, accBase: Number(e.target.value)})} />
-                            </div>
-                        </Card>
-                    </div>
-                </div>
-            );
-        };
         const DocsHub = () => {
             const [files, setFiles] = useState([]);
-            const [loading, setLoading] = useState(false);
-            const toast = useToast();
-            const confirm = useConfirm();
-
-            useEffect(() => {
-                loadFiles();
-            }, []);
-
-            const loadFiles = async () => {
-                setLoading(true);
-                try {
-                    const loaded = await getFilesFromDB();
-                    setFiles(loaded);
-                } catch (e) {
-                    console.error(e);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleUpload = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                // Limit: 10MB to be safe with browser limits per file
-                if (file.size > 10 * 1024 * 1024) {
-                    toast.addToast("File too large (Max 10MB).", "error");
-                    return;
-                }
-
-                setLoading(true);
-                try {
-                    await saveFileToDB(file);
-                    await loadFiles();
-                    toast.addToast("Document uploaded successfully.", "success");
-                } catch (e) {
-                    console.error(e);
-                    toast.addToast("Error saving file. Storage might be full.", "error");
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleDelete = async (id) => {
-                confirm({
-                    title: "Delete Document?",
-                    message: "This action cannot be undone.",
-                    isDanger: true,
-                    onConfirm: async () => {
-                        setLoading(true);
-                        try {
-                            await deleteFileFromDB(id);
-                            await loadFiles();
-                            toast.addToast("Document deleted.", "info");
-                        } catch (e) {
-                            console.error(e);
-                            toast.addToast("Failed to delete document.", "error");
-                        } finally {
-                            setLoading(false);
-                        }
-                    }
-                });
-            };
-
-            const handleView = (file) => {
-                const blob = new Blob([file.data], { type: file.type });
-                const url = URL.createObjectURL(blob);
-                // Open in new tab
-                window.open(url, '_blank');
-            };
-
+            useEffect(() => { getFilesFromDB().then(setFiles); }, []);
+            const handleUpload = async (e) => { if(e.target.files[0]) { await saveFileToDB(e.target.files[0]); setFiles(await getFilesFromDB()); } };
+            const handleDelete = async (id) => { await deleteFileFromDB(id); setFiles(await getFilesFromDB()); };
             return (
-                <div className="p-6 pb-24 animate-fade-in">
-                    <div className="flex justify-between items-center mb-8">
-                        <div>
-                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                                <LucideIcon name="folder" className="text-purple-400" size={28} />
-                                Scheme Documents
-                            </h2>
-                            <p className="text-slate-400 text-sm mt-1">Archive for monthly schemes and policy documents.</p>
-                        </div>
-                        <div className="relative">
-                            <input 
-                                type="file" 
-                                id="doc-upload" 
-                                className="hidden" 
-                                accept=".pdf,.png,.jpg,.jpeg,.xlsx" 
-                                onChange={handleUpload}
-                            />
-                            <label 
-                                htmlFor="doc-upload" 
-                                className="flex items-center gap-2 bg-brand-600 hover:bg-brand-500 text-white px-5 py-3 rounded-xl font-bold text-sm cursor-pointer shadow-lg shadow-brand-900/20 transition-all active:scale-95"
-                            >
-                                <LucideIcon name="upload-cloud" size={18} />
-                                Upload Document
-                            </label>
-                        </div>
+                <div className="p-6 pb-24">
+                     <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-white">Docs</h2>
+                        <div className="relative"><input type="file" id="d" className="hidden" onChange={handleUpload}/><label htmlFor="d" className="bg-brand-600 px-4 py-2 rounded-xl text-white font-bold text-sm">Upload</label></div>
                     </div>
-
-                    {loading && (
-                        <div className="flex justify-center py-12">
-                            <LucideIcon name="loader" className="animate-spin text-brand-500" size={32} />
-                        </div>
-                    )}
-
-                    {!loading && files.length === 0 && (
-                        <div className="text-center py-20 bg-slate-800/30 rounded-3xl border border-dashed border-slate-700">
-                            <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-500">
-                                <LucideIcon name="file" size={32} />
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-300">No Documents Found</h3>
-                            <p className="text-slate-500 text-sm mt-1">Upload PDF or Image files to keep them handy.</p>
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {files.map(file => (
-                            <div key={file.id} className="glass-card p-4 rounded-xl flex items-center justify-between group">
-                                <div className="flex items-center gap-4 overflow-hidden">
-                                    <div className="w-12 h-12 rounded-lg bg-slate-800 flex items-center justify-center text-purple-400 shrink-0">
-                                        <LucideIcon name={file.type.includes('pdf') ? 'file-text' : 'image'} size={24} />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h4 className="font-bold text-slate-200 text-sm truncate">{file.name}</h4>
-                                        <p className="text-xs text-slate-500 mt-0.5">
-                                            {(file.size / 1024).toFixed(0)} KB • {new Date(file.date).toLocaleDateString()}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button 
-                                        onClick={() => handleView(file)} 
-                                        className="p-2 text-slate-400 hover:text-brand-400 hover:bg-slate-800 rounded-lg transition-colors" 
-                                        title="View"
-                                    >
-                                        <LucideIcon name="eye" size={18} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDelete(file.id)} 
-                                        className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-colors" 
-                                        title="Delete"
-                                    >
-                                        <LucideIcon name="trash-2" size={18} />
-                                    </button>
+                    <div className="grid gap-3">
+                        {files.map(f => (
+                            <div key={f.id} className="glass-card p-3 flex justify-between items-center">
+                                <span className="text-white text-sm truncate w-48">{f.name}</span>
+                                <div className="flex gap-2">
+                                    <button onClick={()=>{const u=URL.createObjectURL(new Blob([f.data],{type:f.type})); window.open(u,'_blank');}} className="text-brand-400"><LucideIcon name="eye" /></button>
+                                    <button onClick={()=>handleDelete(f.id)} className="text-red-400"><LucideIcon name="trash" /></button>
                                 </div>
                             </div>
                         ))}
@@ -1853,13 +1015,9 @@
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(
-            <ToastProvider>
-                <ConfirmProvider>
-                    <App />
-                </ConfirmProvider>
-            </ToastProvider>
-        );
+        root.render(<ToastProvider><ConfirmProvider><App /></ConfirmProvider></ToastProvider>);
     </script>
-</body>
-</html>
+
+
+
+</body></html>
