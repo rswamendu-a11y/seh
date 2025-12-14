@@ -1,0 +1,75 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Cordova
+        run: npm install -g cordova
+
+      - name: Create Cordova Project
+        run: |
+          # Create a new cordova project
+          cordova create seh-app com.seh.tool "SEH Tool"
+
+          # Move into the project directory
+          cd seh-app
+
+          # Add Android platform (using latest stable)
+          cordova platform add android
+
+      - name: Configure Assets
+        run: |
+          # Remove default cordova www content
+          rm -rf seh-app/www/*
+
+          # Copy repository assets to cordova www folder
+          cp index.html seh-app/www/
+          cp manifest.json seh-app/www/
+          cp icon.png seh-app/www/
+          # Copy lib directory recursively
+          cp -r lib seh-app/www/
+
+      - name: Configure Config.xml
+        run: |
+          cd seh-app
+
+          # Inject icon configuration into config.xml
+          # We place it before the closing widget tag
+          sed -i '/<\/widget>/i \    <icon src="www/icon.png" />' config.xml
+
+          # Ensure AndroidX is enabled (often needed for modern plugins/builds)
+          sed -i '/<\/widget>/i \    <preference name="AndroidXEnabled" value="true" />' config.xml
+
+          # Allow all navigation (for local files/scripts if needed, though mostly self-contained)
+          sed -i '/<\/widget>/i \    <allow-navigation href="*" />' config.xml
+
+      - name: Build APK
+        run: |
+          cd seh-app
+          cordova build android --debug --verbose
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seh-debug-apk
+          path: seh-app/platforms/android/app/build/outputs/apk/debug/app-debug.apk
