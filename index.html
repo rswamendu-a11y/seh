@@ -387,7 +387,7 @@
             };
 
             useEffect(() => {
-                const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+                const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
                 const handler = () => resetTimer();
                 events.forEach(e => window.addEventListener(e, handler));
                 resetTimer();
@@ -406,6 +406,14 @@
                 }
             };
 
+            const exitApp = () => {
+                if (navigator.app && navigator.app.exitApp) {
+                    navigator.app.exitApp();
+                } else {
+                    alert("Exit is only available in the installed Android APK.");
+                }
+            };
+
             if (isLocked) return <LockScreen onUnlock={() => setIsLocked(false)} />;
 
             return (
@@ -418,9 +426,8 @@
                             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('home')}><AppLogo /></div>
                             <div className="flex gap-2">
                                 <button onClick={() => setIsAutoLocked(true)} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name="lock" /></button>
-                                <button onClick={() => navigator.app && navigator.app.exitApp()} className={`p-2 rounded-lg ${darkMode ? 'text-red-400 hover:text-red-300 hover:bg-red-500/20' : 'text-red-500 hover:text-red-700 hover:bg-red-100'}`}><LucideIcon name="power" /></button>
+                                <button onClick={exitApp} className={`p-2 rounded-lg ${darkMode ? 'text-red-400 hover:text-red-300 hover:bg-red-500/20' : 'text-red-500 hover:text-red-700 hover:bg-red-100'}`}><LucideIcon name="power" /></button>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name={darkMode ? "sun" : "moon"} /></button>
-                                <button onClick={() => setView('home')} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name="home" /></button>
                             </div>
                         </header>
                     )}
