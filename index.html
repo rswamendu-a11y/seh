@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SEH - Sales Entry & Handler</title>
+    <title>sEctrckr</title>
     <link rel="manifest" href="manifest.json">
     
     <!-- Fonts -->
@@ -101,7 +101,7 @@
                         </svg>
                     </div>
                     <div className="flex flex-col">
-                        <h1 className={`font-display font-bold text-white ${fontSize} leading-none tracking-tight`}>SEH</h1>
+                        <h1 className={`font-display font-bold text-white ${fontSize} leading-none tracking-tight`}>sEctrckr</h1>
                         {size === "large" && <span className="text-xs text-brand-400 font-bold tracking-widest uppercase">Sales Entry & Handler</span>}
                     </div>
                 </div>
@@ -348,25 +348,70 @@
             );
         };
 
+        const AutoLockOverlay = ({ onUnlock }) => (
+            <div className="fixed inset-0 z-[120] bg-black/95 flex flex-col items-center justify-center animate-fade-in p-6">
+                <div className="mb-6 opacity-50"><LucideIcon name="lock" size={64} className="text-slate-500" /></div>
+                <h2 className="text-2xl font-bold text-white mb-2">App Locked</h2>
+                <p className="text-slate-400 mb-8">Inactive for 10 minutes.</p>
+                <button onClick={onUnlock} className="px-8 py-3 bg-brand-600 rounded-xl text-white font-bold text-lg hover:bg-brand-500 transition-all active:scale-95 shadow-lg shadow-brand-500/20">
+                    Unlock
+                </button>
+            </div>
+        );
+
         // --- APP ---
         const App = () => {
             const [view, setView] = useState('home');
             const [isLocked, setIsLocked] = useState(false);
             const [showSecurity, setShowSecurity] = useState(false);
             const [darkMode, setDarkMode] = useState(true);
+            const [isAutoLocked, setIsAutoLocked] = useState(false);
+            const timerRef = useRef(null);
 
             useEffect(() => { if (localStorage.getItem('sec_app_pin')) setIsLocked(true); }, []);
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [view, isLocked, darkMode]);
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [view, isLocked, darkMode, isAutoLocked]);
 
             useEffect(() => {
                 if(darkMode) document.documentElement.classList.add('dark');
                 else document.documentElement.classList.remove('dark');
             }, [darkMode]);
 
+            // --- Auto Lock Logic ---
+            const resetTimer = () => {
+                if(timerRef.current) clearTimeout(timerRef.current);
+                if(!isLocked && !isAutoLocked) {
+                    timerRef.current = setTimeout(() => {
+                         // Only lock if we are not already locked or in security flow
+                         setIsAutoLocked(true);
+                    }, 10 * 60 * 1000); // 10 minutes
+                }
+            };
+
+            useEffect(() => {
+                const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+                const handler = () => resetTimer();
+                events.forEach(e => window.addEventListener(e, handler));
+                resetTimer();
+                return () => {
+                    events.forEach(e => window.removeEventListener(e, handler));
+                    if(timerRef.current) clearTimeout(timerRef.current);
+                };
+            }, [isLocked, isAutoLocked]);
+
+            const handleAutoUnlock = () => {
+                if(localStorage.getItem('sec_app_pin')) {
+                    setIsAutoLocked(false);
+                    setIsLocked(true); // Go to PIN screen
+                } else {
+                    setIsAutoLocked(false);
+                }
+            };
+
             if (isLocked) return <LockScreen onUnlock={() => setIsLocked(false)} />;
 
             return (
                 <div className={`min-h-screen relative flex flex-col ${darkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'} transition-colors duration-300`}>
+                    {isAutoLocked && <AutoLockOverlay onUnlock={handleAutoUnlock} />}
                     <SecuritySettings isOpen={showSecurity} onClose={() => setShowSecurity(false)} />
                     {/* Fixed Header */}
                     {view !== 'home' && (
@@ -388,6 +433,12 @@
         };
 
         const HomeView = ({ setView, openSecurity, darkMode, setDarkMode }) => {
+            const [name, setName] = useState("");
+            useEffect(() => {
+                const p = JSON.parse(localStorage.getItem('seh_profile_v16') || '{}');
+                if(p.name) setName(p.name);
+            }, []);
+
             const tools = [
                { id: 'tracker', title: "Daily Sales Tracker", subtitle: "SEH v2", desc: "Track sales with Brand, Model, Variant & Price.", icon: "bar-chart-2", color: "text-brand-400", bg: "bg-brand-500/10" },
                { id: 'incentive', title: "Incentive Calculator", subtitle: "Hybrid Structure", desc: "Calculate payouts with slabs, gates, and kicker logic.", icon: "calculator", color: "text-emerald-400", bg: "bg-emerald-500/10" },
@@ -395,7 +446,7 @@
            return (
                <div className="px-2 py-12 flex flex-col justify-center min-h-[80vh]">
                     <div className="mb-12 animate-fade-in-up flex justify-between items-start">
-                       <div><div className="mb-6"><AppLogo size="large" /></div><h2 className="text-4xl font-display font-bold mb-3">Welcome Back.</h2><p className="text-lg opacity-70">Sales Entry & Handler v2</p></div>
+                       <div><div className="mb-6"><AppLogo size="large" /></div><h2 className="text-4xl font-display font-bold mb-3">Welcome Back{name ? `, ${name}` : ''}.</h2><p className="text-lg opacity-70">Sales Entry & Handler v2</p></div>
                        <div className="flex flex-col gap-2">
                            <button onClick={openSecurity} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-200 text-slate-600 hover:text-slate-900'}`}><LucideIcon name="shield-check" size={24} /></button>
                            <button onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-slate-200 text-slate-600 hover:text-slate-900'}`}><LucideIcon name={darkMode ? "sun" : "moon"} size={24} /></button>
@@ -760,6 +811,7 @@
                                 <Input label="Name" value={profile.name} onChange={e=>setProfile({...profile, name: e.target.value})} />
                                 <Input label="Outlet" value={profile.outlet} onChange={e=>setProfile({...profile, outlet: e.target.value})} />
                                 <Button onClick={()=>{localStorage.setItem('seh_profile_v16', JSON.stringify(profile)); toast.addToast("Profile Saved", "success");}} className="w-full">Save Profile</Button>
+                                <Button variant="danger" onClick={() => navigator.app && navigator.app.exitApp()} className="w-full mt-4" icon="log-out">Exit App</Button>
                             </div>
                         </Card>
                     )}
