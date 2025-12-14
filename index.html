@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>sEctrckr</title>
+    <title>SEH</title>
     <link rel="manifest" href="manifest.json">
     
     <!-- Fonts -->
@@ -94,15 +94,17 @@
             const dim = size === "large" ? 48 : 32;
             const fontSize = size === "large" ? "text-2xl" : "text-lg";
             return (
-                <div className="flex items-center gap-2">
-                    <div className="relative flex items-center justify-center rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 shadow-lg shadow-brand-500/20" style={{width: dim, height: dim}}>
-                        <svg width={dim*0.6} height={dim*0.6} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                <div className="flex items-center gap-3">
+                    <div className="relative flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 shadow-lg shadow-indigo-500/20" style={{width: dim, height: dim}}>
+                        <svg width={dim*0.6} height={dim*0.6} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                            <path d="M3.27 6.96L12 12.01l8.73-5.05"></path>
+                            <path d="M12 22.08V12"></path>
                         </svg>
                     </div>
                     <div className="flex flex-col">
-                        <h1 className={`font-display font-bold text-white ${fontSize} leading-none tracking-tight`}>sEctrckr</h1>
-                        {size === "large" && <span className="text-xs text-brand-400 font-bold tracking-widest uppercase">Sales Entry & Handler</span>}
+                        <h1 className={`font-display font-bold text-white ${fontSize} leading-none tracking-tight`}>SEH</h1>
+                        {size === "large" && <span className="text-xs text-indigo-400 font-bold tracking-widest uppercase">Sales Entry & Handler</span>}
                     </div>
                 </div>
             );
@@ -204,48 +206,76 @@
         const SettingsModal = ({ isOpen, onClose, config, setConfig }) => {
             const [section, setSection] = useState('sp');
             const [tempConfig, setTempConfig] = useState(null);
-            useEffect(() => { if(isOpen) setTempConfig(JSON.parse(JSON.stringify(config))); }, [isOpen, config]);
+
+            useEffect(() => {
+                if(isOpen && config) {
+                    const clone = JSON.parse(JSON.stringify(config));
+                    // Ensure slabs have max if missing
+                    ['sp', 'tb', 'cp'].forEach(k => {
+                        if(clone[k] && clone[k].slabs) {
+                            clone[k].slabs.forEach(s => { if(s.max === undefined) s.max = 999999; });
+                        }
+                    });
+                    setTempConfig(clone);
+                }
+            }, [isOpen, config]);
+
             if(!isOpen || !tempConfig) return null;
 
             const renderSlabEditor = (key, label) => (
                 <div className="space-y-3">
-                    <h4 className="font-bold text-white text-sm uppercase tracking-wider mb-2">{label} Slabs</h4>
+                    <div className="flex justify-between items-center">
+                         <h4 className="font-bold text-white text-sm uppercase tracking-wider">{label} Slabs</h4>
+                         <span className="text-[10px] text-slate-400 opacity-60">Min - Max : Amount</span>
+                    </div>
                     {tempConfig[key].slabs.map((slab, idx) => (
                         <div key={idx} className="flex gap-2 items-center bg-slate-800/50 p-2 rounded-lg">
-                            <div className="flex-1">
-                                <label className="text-[10px] text-slate-400 block">Min</label>
+                            <div className="w-16">
+                                <label className="text-[9px] text-slate-500 block uppercase">Min</label>
                                 <input type="number" value={slab.min} onChange={(e) => {
                                     const newSlabs = [...tempConfig[key].slabs];
                                     newSlabs[idx].min = Number(e.target.value);
                                     setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
-                                }} className="bg-transparent text-white font-bold w-full outline-none text-xs"/>
+                                }} className="bg-transparent text-white font-bold w-full outline-none text-xs border-b border-slate-700 focus:border-brand-500 transition-colors"/>
                             </div>
+                            <span className="text-slate-500">-</span>
+                            <div className="w-16">
+                                <label className="text-[9px] text-slate-500 block uppercase">Max</label>
+                                <input type="number" value={slab.max} onChange={(e) => {
+                                    const newSlabs = [...tempConfig[key].slabs];
+                                    newSlabs[idx].max = Number(e.target.value);
+                                    setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
+                                }} className="bg-transparent text-white font-bold w-full outline-none text-xs border-b border-slate-700 focus:border-brand-500 transition-colors"/>
+                            </div>
+                            <span className="text-slate-500">:</span>
                             <div className="flex-1">
-                                <label className="text-[10px] text-slate-400 block">Rate</label>
+                                <label className="text-[9px] text-slate-500 block uppercase">Amt</label>
                                 <input type="number" value={slab.rate} onChange={(e) => {
                                     const newSlabs = [...tempConfig[key].slabs];
                                     newSlabs[idx].rate = Number(e.target.value);
                                     setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
-                                }} className="bg-transparent text-emerald-400 font-bold w-full outline-none text-xs"/>
+                                }} className="bg-transparent text-emerald-400 font-bold w-full outline-none text-xs border-b border-slate-700 focus:border-brand-500 transition-colors"/>
                             </div>
                             <button onClick={() => {
                                 const newSlabs = tempConfig[key].slabs.filter((_, i) => i !== idx);
                                 setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
-                            }} className="text-red-400 p-1"><LucideIcon name="trash" size={14}/></button>
+                            }} className="text-red-400 p-2 hover:bg-red-500/10 rounded"><LucideIcon name="trash" size={14}/></button>
                         </div>
                     ))}
                     <Button variant="secondary" onClick={() => {
-                        const newSlabs = [...tempConfig[key].slabs, { min: 0, rate: 0, label: "New Slab" }];
+                        const newSlabs = [...tempConfig[key].slabs, { min: 0, max: 999999, rate: 0 }];
                         setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
                     }} icon="plus" className="w-full py-2 text-xs">Add Slab</Button>
                 </div>
             );
 
             return (
-                <Modal isOpen={isOpen} onClose={onClose} title="Incentive Settings">
+                <Modal isOpen={isOpen} onClose={onClose} title="Incentive Configuration">
                     <div className="flex gap-2 overflow-x-auto pb-2 mb-4 border-b border-slate-700 shrink-0 no-scrollbar">
                         {['sp', 'tb', 'cp', 'caps'].map(s => (
-                            <button key={s} onClick={() => setSection(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${section === s ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{s}</button>
+                            <button key={s} onClick={() => setSection(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${section === s ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                {s === 'sp' ? 'Phones' : s === 'tb' ? 'Tablets' : s === 'cp' ? 'Care+' : 'Caps'}
+                            </button>
                         ))}
                     </div>
                     {section === 'sp' && renderSlabEditor('sp', 'Smartphone')}
@@ -259,14 +289,14 @@
                                         <span className="text-slate-300 text-sm uppercase font-bold">{k}</span>
                                         <input type="number" value={v} onChange={(e) => {
                                             setTempConfig({...tempConfig, caps: {...tempConfig.caps, [k]: Number(e.target.value)}});
-                                        }} className="bg-transparent text-right text-white font-bold outline-none w-24" />
+                                        }} className="bg-transparent text-right text-white font-bold outline-none w-24 border-b border-slate-600" />
                                     </div>
                                 ))}
                         </div>
                     )}
                     <div className="pt-4 mt-4 border-t border-slate-700 flex justify-end gap-2 shrink-0">
                         <Button variant="outline" onClick={onClose}>Cancel</Button>
-                        <Button onClick={() => { setConfig(tempConfig); onClose(); }}>Save</Button>
+                        <Button onClick={() => { setConfig(tempConfig); onClose(); }}>Save Config</Button>
                     </div>
                 </Modal>
             );
@@ -424,10 +454,27 @@
                     {view !== 'home' && (
                         <header className={`sticky top-0 z-40 backdrop-blur-md border-b px-4 py-3 flex items-center justify-between ${darkMode ? 'bg-slate-950/80 border-white/5' : 'bg-white/80 border-slate-200'}`}>
                             <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('home')}><AppLogo /></div>
-                            <div className="flex gap-2">
+
+                            {/* Desktop Nav */}
+                            <div className="hidden md:flex gap-2">
                                 <button onClick={() => setIsAutoLocked(true)} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name="lock" /></button>
                                 <button onClick={exitApp} className={`p-2 rounded-lg ${darkMode ? 'text-red-400 hover:text-red-300 hover:bg-red-500/20' : 'text-red-500 hover:text-red-700 hover:bg-red-100'}`}><LucideIcon name="power" /></button>
                                 <button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'}`}><LucideIcon name={darkMode ? "sun" : "moon"} /></button>
+                            </div>
+
+                            {/* Mobile Hamburger */}
+                            <div className="md:hidden relative">
+                                <button onClick={() => setShowSecurity(!showSecurity)} className="p-2 text-slate-400 hover:text-white">
+                                    <LucideIcon name="menu" size={24} />
+                                </button>
+                                {showSecurity && (
+                                     <div className="absolute right-0 top-full mt-2 w-48 bg-slate-800 rounded-xl shadow-xl border border-slate-700 overflow-hidden flex flex-col z-50">
+                                        <button onClick={() => { setIsAutoLocked(true); setShowSecurity(false); }} className="p-3 text-left hover:bg-slate-700 flex items-center gap-3 text-sm font-bold text-slate-300"><LucideIcon name="lock" size={16}/> Lock App</button>
+                                        <button onClick={() => { setDarkMode(!darkMode); setShowSecurity(false); }} className="p-3 text-left hover:bg-slate-700 flex items-center gap-3 text-sm font-bold text-slate-300"><LucideIcon name={darkMode ? "sun" : "moon"} size={16}/> {darkMode ? "Light Mode" : "Dark Mode"}</button>
+                                        <div className="h-px bg-slate-700 my-1"></div>
+                                        <button onClick={exitApp} className="p-3 text-left hover:bg-red-500/20 flex items-center gap-3 text-sm font-bold text-red-400"><LucideIcon name="power" size={16}/> Exit App</button>
+                                     </div>
+                                )}
                             </div>
                         </header>
                     )}
@@ -631,7 +678,40 @@
                     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 26);
 
                     const tableRows = rows.map(r => [r.Date, r.Brand, r.Model, r.Variant, r.Qty, r.Value]);
-                    doc.autoTable({ startY: 30, head: [['Date', 'Brand', 'Model', 'Variant', 'Qty', 'Val']], body: tableRows });
+
+                    // Calculate Totals for Footer
+                    let totalQty = 0;
+                    let totalVal = 0;
+                    const brandTotals = {};
+                    rows.forEach(r => {
+                        totalQty += r.Qty;
+                        totalVal += r.Value;
+                        if(!brandTotals[r.Brand]) brandTotals[r.Brand] = 0;
+                        brandTotals[r.Brand] += r.Qty;
+                    });
+
+                    doc.autoTable({
+                        startY: 30,
+                        head: [['Date', 'Brand', 'Model', 'Variant', 'Qty', 'Val']],
+                        body: tableRows,
+                        foot: [[
+                             { content: 'Total', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold' } },
+                             totalQty,
+                             totalVal
+                        ]]
+                    });
+
+                    // Brand Wise Summary
+                    let finalY = doc.lastAutoTable.finalY + 10;
+                    doc.text("Brand-wise Volume:", 14, finalY);
+                    const brandRows = Object.entries(brandTotals).map(([b, q]) => [b, q]);
+                    doc.autoTable({
+                        startY: finalY + 5,
+                        head: [['Brand', 'Volume']],
+                        body: brandRows,
+                        theme: 'grid',
+                        tableWidth: 'wrap'
+                    });
 
                     const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(salesData))));
                     doc.addPage();
@@ -641,6 +721,47 @@
                     doc.save("SEH_Report.pdf");
                 }
                 toast.addToast(`Exported ${type.toUpperCase()}`, "success");
+            };
+
+            const backupProfile = () => {
+                const state = {
+                    profile: localStorage.getItem('seh_profile_v16'),
+                    sales: localStorage.getItem('seh_sales_data_v16'),
+                    config: localStorage.getItem('sec_incentive_config'),
+                    pin: localStorage.getItem('sec_app_pin')
+                };
+                const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+                const blob = new Blob([b64], {type: "text/plain"});
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `SEH_Backup_${new Date().toISOString().split('T')[0]}.seh`;
+                link.click();
+            };
+
+            const restoreProfile = (e) => {
+                 const file = e.target.files[0];
+                 if(!file) return;
+                 const reader = new FileReader();
+                 reader.onload = (evt) => {
+                     try {
+                        const json = JSON.parse(decodeURIComponent(escape(atob(evt.target.result))));
+                        confirm({
+                            title: "Restore Full Profile?",
+                            message: "This will overwrite ALL data (Sales, Settings, Profile). Irreversible.",
+                            isDanger: true,
+                            onConfirm: () => {
+                                if(json.profile) localStorage.setItem('seh_profile_v16', json.profile);
+                                if(json.sales) localStorage.setItem('seh_sales_data_v16', json.sales);
+                                if(json.config) localStorage.setItem('sec_incentive_config', json.config);
+                                if(json.pin) localStorage.setItem('sec_app_pin', json.pin);
+                                window.location.reload();
+                            }
+                        });
+                     } catch(err) {
+                         toast.addToast("Invalid Backup File", "error");
+                     }
+                 };
+                 reader.readAsText(file);
             };
 
             const importData = (e) => {
@@ -799,14 +920,54 @@
                             <div className="flex justify-between bg-slate-800 p-3 rounded-xl"><span className="text-xs font-bold text-slate-400 uppercase pt-1">Month</span><input type="month" value={reportMonth} onChange={e=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right"/></div>
                             <div className="grid md:grid-cols-2 gap-4"><Card><canvas ref={pieChartRef}></canvas></Card><Card><canvas ref={barChartRef}></canvas></Card></div>
                             <Card>
-                                <h3 className="font-bold mb-4">Price Segmentation</h3>
-                                <div className="space-y-3">
-                                    {Object.entries(getStats.segments).map(([seg, val]) => (
-                                        <div key={seg}>
-                                            <div className="flex justify-between text-xs opacity-70 mb-1"><span>{seg}</span><span>{val} u</span></div>
-                                            <div className="h-1.5 bg-slate-800 rounded-full"><div className="h-full bg-brand-500 rounded-full" style={{width: `${getStats.mtd.vol>0 ? (val/getStats.mtd.vol)*100 : 0}%`}}></div></div>
-                                        </div>
-                                    ))}
+                                <h3 className="font-bold mb-4">Brand-wise Price Segmentation (MTD)</h3>
+                                <div className="space-y-6">
+                                    {brands.map(brand => {
+                                        // Calculate segments for this brand
+                                        const brandSegments = { '<10k':0, '10-20k':0, '20-30k':0, '30-50k':0, '>50k':0 };
+                                        let totalForBrand = 0;
+
+                                        const txns = Object.entries(salesData)
+                                            .filter(([d]) => d.startsWith(reportMonth))
+                                            .flatMap(([,t]) => t)
+                                            .filter(t => t.brand === brand.key);
+
+                                        txns.forEach(t => {
+                                            const p = t.price;
+                                            totalForBrand += t.qty;
+                                            if(p<10000) brandSegments['<10k'] += t.qty;
+                                            else if(p<20000) brandSegments['10-20k'] += t.qty;
+                                            else if(p<30000) brandSegments['20-30k'] += t.qty;
+                                            else if(p<50000) brandSegments['30-50k'] += t.qty;
+                                            else brandSegments['>50k'] += t.qty;
+                                        });
+
+                                        if(totalForBrand === 0) return null;
+
+                                        return (
+                                            <div key={brand.key}>
+                                                 <div className="flex items-center gap-2 mb-2">
+                                                     <div className="w-2 h-2 rounded-full" style={{backgroundColor: brand.color}}></div>
+                                                     <span className="font-bold text-sm text-white">{brand.label}</span>
+                                                     <span className="text-xs text-slate-500">({totalForBrand} units)</span>
+                                                 </div>
+                                                 <div className="space-y-2 pl-4 border-l border-slate-800 ml-1">
+                                                     {Object.entries(brandSegments).map(([seg, val]) => {
+                                                         if(val === 0) return null;
+                                                         return (
+                                                            <div key={seg} className="flex items-center gap-3">
+                                                                <span className="text-[10px] text-slate-400 w-12">{seg}</span>
+                                                                <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                                                    <div className="h-full rounded-full" style={{width: `${(val/totalForBrand)*100}%`, backgroundColor: brand.color}}></div>
+                                                                </div>
+                                                                <span className="text-[10px] font-bold text-white w-6 text-right">{val}</span>
+                                                            </div>
+                                                         );
+                                                     })}
+                                                 </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </Card>
                         </div>
@@ -819,6 +980,28 @@
                                 <Input label="Name" value={profile.name} onChange={e=>setProfile({...profile, name: e.target.value})} />
                                 <Input label="Outlet" value={profile.outlet} onChange={e=>setProfile({...profile, outlet: e.target.value})} />
                                 <Button onClick={()=>{localStorage.setItem('seh_profile_v16', JSON.stringify(profile)); toast.addToast("Profile Saved", "success");}} className="w-full">Save Profile</Button>
+
+                                <div className="h-px bg-slate-700 my-4"></div>
+                                <h4 className="font-bold text-sm uppercase opacity-60">Data Management</h4>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Button onClick={backupProfile} variant="secondary" icon="save">Backup</Button>
+                                    <div className="relative">
+                                        <input type="file" id="profile-restore-input" className="hidden" onChange={restoreProfile} />
+                                        <label htmlFor="profile-restore-input" className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl font-bold text-sm bg-slate-700 text-slate-200 hover:bg-slate-600 cursor-pointer transition-all active:scale-95">
+                                            <LucideIcon name="rotate-ccw" size={18}/> Restore
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="h-px bg-slate-700 my-4"></div>
+                                <h4 className="font-bold text-sm uppercase opacity-60">Brand-wise Volume (All Time)</h4>
+                                <div className="space-y-2">
+                                    {Object.entries(getStats.grouped).map(([b, d]) => (
+                                        <div key={b} className="flex justify-between text-xs font-bold opacity-80 border-b border-slate-800 pb-1">
+                                            <span>{brands.find(x=>x.key===b)?.label || b}</span>
+                                            <span>{d.vol} Units</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </Card>
                     )}
@@ -826,54 +1009,79 @@
             );
        };
 
-       // --- INCENTIVE CALC (Fixed: Modal Selection + Missing Categories) ---
+       // --- INCENTIVE CALC ---
        const IncentiveCalculator = () => {
            const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [], acc: [] });
            const [settings, setSettings] = useState({ channel: 'standard', status: 'existing', enforceGates: false });
-           const [config, setConfig] = useState(() => JSON.parse(localStorage.getItem('sec_incentive_config')) || {
-                sp: { slabs: [{min:100000,rate:700},{min:0,rate:25}], gates:{std:[{min:40,p:1}], sis:[{min:40,p:1}]}, fm_mult:0.5 },
-                tb: { slabs: [{min:70000,rate:800},{min:10000,rate:100}], focus: [{name:"S11 Ultra", rate:1500}, {name:"S10 Lite", rate:750}] },
-                wr: [{name:"Watch Ultra", rate:1200}, {name:"Buds3 Pro", rate:600}],
-                cp: { slabs: [{min:100000,rate:400},{min:0,rate:50}], kickers: { ff7:{l:400,h:600}, s25:{l:300,h:500} } },
-                npc: [{name:"GB5 Pro", rate:3000}, {name:"GB4", rate:1250}],
-                bun: { std: [{name:"Wr+Hr", rate:750}], excl: [{name:"Wr+Hr+Acc", rate:1000}] },
-                acc: [{min:4,rate:3000}],
-                caps: { global:75000, tb:20000, npc:50000, bun:10000 }
+           // Initialize with new structure if needed, or migration
+           const [config, setConfig] = useState(() => {
+                const saved = JSON.parse(localStorage.getItem('sec_incentive_config'));
+                const def = {
+                    sp: { slabs: [{min:100000, max:999999, rate:700},{min:70000, max:100000, rate:600}, {min:0, max:70000, rate:100}], gates:{std:[{min:40,p:1}], sis:[{min:40,p:1}]}, fm_mult:0.5 },
+                    tb: { slabs: [{min:70000, max:999999, rate:800},{min:0, max:70000, rate:100}], focus: [{name:"S11 Ultra", rate:1500}, {name:"S10 Lite", rate:750}] },
+                    wr: [{name:"Watch Ultra", rate:1200}, {name:"Buds3 Pro", rate:600}],
+                    cp: { slabs: [{min:100000, max:999999, rate:400},{min:0, max:100000, rate:50}], kickers: { ff7:{l:400,h:600}, s25:{l:300,h:500} } },
+                    npc: [{name:"GB5 Pro", rate:3000}, {name:"GB4", rate:1250}],
+                    bun: { std: [{name:"Wr+Hr", rate:750}], excl: [{name:"Wr+Hr+Acc", rate:1000}] },
+                    acc: [{min:4,rate:3000}],
+                    caps: { global:75000, tb:20000, npc:50000, bun:10000 }
+                };
+                if(!saved) return def;
+                // Simple migration check: ensure slabs have max
+                if(saved.sp && saved.sp.slabs && saved.sp.slabs[0].max === undefined) return def;
+                return saved;
            });
+
            const [extra, setExtra] = useState({ accVal:0, accBase:0, k_ff7:0, t_ff7:'low', k_s25:0, t_s25:'low' });
            const [result, setResult] = useState({ total: 0, logs: [] });
 
            // UI States
            const [showSettings, setShowSettings] = useState(false);
            const [showSelection, setShowSelection] = useState(false);
-           const [activeCat, setActiveCat] = useState('sp'); // Category being added
+           const [activeCat, setActiveCat] = useState('sp');
 
            useEffect(() => localStorage.setItem('sec_incentive_config', JSON.stringify(config)), [config]);
 
-           // Calc Logic (Simplified for brevity but structurally complete for categories)
+           // Calc Logic with MIN/MAX support
            useEffect(() => {
                 let logs = []; let total = 0;
                 const c = config;
 
-                // 1. SP
-                let spQ = 0, spRaw = 0;
-                rows.sp.forEach(r => { spQ += r.qty; spRaw += r.qty * (r.fm ? r.rate * c.sp.fm_mult : r.rate); });
-                logs.push({ cat: "Smartphones", val: spRaw }); total += spRaw;
+                // Helper to find slab rate
+                const getRate = (slabs, price) => {
+                    const match = slabs.find(s => price >= s.min && price < s.max);
+                    return match ? match.rate : 0;
+                };
 
-                // 2. TB
-                let tbTot = 0;
-                rows.tb.forEach(r => { tbTot += r.qty * r.rate; });
-                logs.push({ cat: "Tablets", val: tbTot }); total += tbTot;
+                // 1. SP - Use Dynamic Slabs
+                let spVal = 0;
+                rows.sp.forEach(r => {
+                    const unitRate = getRate(c.sp.slabs, r.price || 0);
+                    spVal += r.qty * unitRate;
+                });
+                logs.push({ cat: "Smartphones", val: spVal }); total += spVal;
+
+                // 2. TB - Use Dynamic Slabs + Focus
+                let tbVal = 0;
+                rows.tb.forEach(r => {
+                    // If it has a specific rate (focus model), use it, else lookup slab by price
+                    const rate = r.rate || getRate(c.tb.slabs, r.price || 0);
+                    tbVal += r.qty * rate;
+                });
+                logs.push({ cat: "Tablets", val: tbVal }); total += tbVal;
 
                 // 3. WR
                 let wrTot = 0;
                 rows.wr.forEach(r => { wrTot += r.qty * r.rate; });
                 logs.push({ cat: "Wearables", val: wrTot }); total += wrTot;
 
-                // 4. CP
-                let cpTot = 0;
-                rows.cp.forEach(r => { cpTot += r.qty * r.rate; });
-                logs.push({ cat: "Care+", val: cpTot }); total += cpTot;
+                // 4. CP - Use Dynamic Slabs
+                let cpVal = 0;
+                rows.cp.forEach(r => {
+                    const rate = getRate(c.cp.slabs, r.price || 0);
+                    cpVal += r.qty * rate;
+                });
+                logs.push({ cat: "Care+", val: cpVal }); total += cpVal;
 
                 // 5. NPC
                 let npcTot = 0;
@@ -906,11 +1114,20 @@
                    <SettingsModal isOpen={showSettings} onClose={()=>setShowSettings(false)} config={config} setConfig={setConfig} />
 
                    {/* Selection Modal */}
-                   <Modal isOpen={showSelection} onClose={()=>setShowSelection(false)} title={`Select ${activeCat.toUpperCase()}`}>
+                   <Modal isOpen={showSelection} onClose={()=>setShowSelection(false)} title={`Add ${activeCat === 'sp' ? 'Smartphone' : activeCat === 'tb' ? 'Tablet' : 'Item'}`}>
                        <div className="grid gap-2">
-                           {activeCat === 'sp' && config.sp.slabs.map((s,i)=><button key={i} onClick={()=>addRow('sp', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.label || s.min+'+'}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
-                           {activeCat === 'tb' && [...config.tb.focus, ...config.tb.slabs].map((s,i)=><button key={i} onClick={()=>addRow('tb', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name || s.min+'+'}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
-                           {activeCat === 'cp' && config.cp.slabs.map((s,i)=><button key={i} onClick={()=>addRow('cp', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.min}+</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
+                           {(activeCat === 'sp' || activeCat === 'tb' || activeCat === 'cp') && (
+                               <div className="p-4 bg-slate-800 rounded-xl space-y-3">
+                                   <p className="text-xs text-slate-400">Enter Price to determine slab automatically.</p>
+                                   <Input type="number" placeholder="Enter Price (INR)" id="slab-price-input" />
+                                   <Button onClick={() => {
+                                       const p = Number(document.getElementById('slab-price-input').value);
+                                       if(p > 0) addRow(activeCat, { name: 'Manual Entry', price: p, rate: 0 }); // Rate calc'd dynamically
+                                   }} className="w-full">Add by Price</Button>
+                               </div>
+                           )}
+
+                           {activeCat === 'tb' && config.tb.focus.map((s,i)=><button key={i} onClick={()=>addRow('tb', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name} (Focus)</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
                            {activeCat === 'wr' && config.wr.map((s,i)=><button key={i} onClick={()=>addRow('wr', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
                            {activeCat === 'npc' && config.npc.map((s,i)=><button key={i} onClick={()=>addRow('npc', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
                            {activeCat === 'bun' && config.bun.std.map((s,i)=><button key={i} onClick={()=>addRow('bun', s)} className="p-3 bg-slate-800 rounded-lg text-left hover:bg-slate-700"><div className="font-bold">{s.name}</div><div className="text-xs text-brand-400">₹{s.rate}</div></button>)}
@@ -929,14 +1146,25 @@
                                <h3 className="font-bold uppercase text-sm">{cat === 'sp' ? 'Smartphones' : cat === 'tb' ? 'Tablets' : cat === 'wr' ? 'Wearables' : cat === 'cp' ? 'Care+' : cat === 'npc' ? 'Note PC' : cat === 'bun' ? 'Bundles' : 'Accessories'}</h3>
                                <button onClick={()=>openModal(cat)} className="text-brand-400 text-xs font-bold">+ Add</button>
                            </div>
-                           {rows[cat].map(r => (
-                               <div key={r.id} className="flex gap-2 mb-2 items-center text-xs">
-                                   <div className="flex-1 bg-slate-800 rounded p-2 text-white font-bold">{r.name}</div>
-                                   <input type="number" className="w-12 bg-slate-800 rounded p-2 text-center" value={r.qty} onChange={e=>{const n=Number(e.target.value); setRows(p=>({...p, [cat]: p[cat].map(x=>x.id===r.id?{...x,qty:n}:x)}))}} />
-                                   <div className="w-16 text-right font-bold text-emerald-400">₹{r.rate * r.qty}</div>
-                                   <button onClick={()=>delRow(cat, r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
-                               </div>
-                           ))}
+                           {rows[cat].map(r => {
+                               // Calc display rate dynamically for slab items
+                               let displayRate = r.rate;
+                               if(cat === 'sp') displayRate = config.sp.slabs.find(s => (r.price||0) >= s.min && (r.price||0) < s.max)?.rate || 0;
+                               if(cat === 'tb' && !r.rate) displayRate = config.tb.slabs.find(s => (r.price||0) >= s.min && (r.price||0) < s.max)?.rate || 0;
+                               if(cat === 'cp') displayRate = config.cp.slabs.find(s => (r.price||0) >= s.min && (r.price||0) < s.max)?.rate || 0;
+
+                               return (
+                                   <div key={r.id} className="flex gap-2 mb-2 items-center text-xs">
+                                       <div className="flex-1 bg-slate-800 rounded p-2 text-white font-bold flex justify-between">
+                                           <span>{r.name}</span>
+                                           {r.price && <span className="opacity-60 text-[10px] pt-0.5">₹{r.price}</span>}
+                                       </div>
+                                       <input type="number" className="w-12 bg-slate-800 rounded p-2 text-center" value={r.qty} onChange={e=>{const n=Number(e.target.value); setRows(p=>({...p, [cat]: p[cat].map(x=>x.id===r.id?{...x,qty:n}:x)}))}} />
+                                       <div className="w-16 text-right font-bold text-emerald-400">₹{displayRate * r.qty}</div>
+                                       <button onClick={()=>delRow(cat, r.id)} className="text-red-400"><LucideIcon name="x" size={14}/></button>
+                                   </div>
+                               );
+                           })}
                            {rows[cat].length === 0 && <p className="text-[10px] opacity-40 italic">No entries.</p>}
                        </Card>
                    ))}
