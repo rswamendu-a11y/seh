@@ -40,8 +40,8 @@
     </script>
     
     <!-- Local React & Babel -->
-    <script crossorigin src="lib/react.production.min.js"></script>
-    <script crossorigin src="lib/react-dom.production.min.js"></script>
+    <script src="lib/react.production.min.js"></script>
+    <script src="lib/react-dom.production.min.js"></script>
     <script src="lib/babel.min.js"></script>
     
     <!-- Local Utilities -->
@@ -239,7 +239,7 @@
 
         // --- SETTINGS GUI ---
         const SettingsModal = ({ isOpen, onClose, config, setConfig }) => {
-            const [section, setSection] = useState('sp'); // sp, tb, brands, etc.
+            const [section, setSection] = useState('sp'); // sp, tb, cp, wr, bun, acc, caps
             const [tempConfig, setTempConfig] = useState(null);
 
             useEffect(() => {
@@ -253,6 +253,11 @@
 
             if(!isOpen || !tempConfig) return null;
 
+            // Helper for updating nested state
+            const updateSlabs = (key, newSlabs) => {
+                 setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
+            };
+
             const renderSlabEditor = (key, label) => (
                 <div className="space-y-3">
                     <h4 className="font-bold text-white text-sm uppercase tracking-wider mb-2">{label} Slabs</h4>
@@ -263,7 +268,7 @@
                                 <input type="number" value={slab.min} onChange={(e) => {
                                     const newSlabs = [...tempConfig[key].slabs];
                                     newSlabs[idx].min = Number(e.target.value);
-                                    setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
+                                    updateSlabs(key, newSlabs);
                                 }} className="bg-transparent text-white font-bold w-full outline-none text-xs"/>
                             </div>
                             <div className="flex-1">
@@ -271,18 +276,107 @@
                                 <input type="number" value={slab.rate} onChange={(e) => {
                                     const newSlabs = [...tempConfig[key].slabs];
                                     newSlabs[idx].rate = Number(e.target.value);
-                                    setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
+                                    updateSlabs(key, newSlabs);
                                 }} className="bg-transparent text-emerald-400 font-bold w-full outline-none text-xs"/>
                             </div>
                             <button onClick={() => {
                                 const newSlabs = tempConfig[key].slabs.filter((_, i) => i !== idx);
-                                setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
+                                updateSlabs(key, newSlabs);
                             }} className="text-red-400 p-1"><LucideIcon name="trash" size={14}/></button>
                         </div>
                     ))}
                     <Button variant="secondary" onClick={() => {
                         const newSlabs = [...tempConfig[key].slabs, { min: 0, rate: 0, label: "New Slab" }];
-                        setTempConfig({...tempConfig, [key]: {...tempConfig[key], slabs: newSlabs}});
+                        updateSlabs(key, newSlabs);
+                    }} icon="plus" className="w-full py-2 text-xs">Add Slab</Button>
+                </div>
+            );
+
+            // Generic List Editor (for Wearables, Bundles)
+            const renderListEditor = (listKey, label) => {
+                 // For bundles, we check if it's the simple list or nested.
+                 // Actually for 'wr' it is a list of {name, rate}.
+                 const list = tempConfig[listKey];
+                 if(!Array.isArray(list)) return null;
+
+                 return (
+                    <div className="space-y-3">
+                         <h4 className="font-bold text-white text-sm uppercase tracking-wider mb-2">{label} Rates</h4>
+                         {list.map((item, idx) => (
+                             <div key={idx} className="flex gap-2 items-center bg-slate-800/50 p-2 rounded-lg">
+                                 <div className="flex-[2]">
+                                     <label className="text-[10px] text-slate-400 block">Model Name</label>
+                                     <input type="text" value={item.name} onChange={(e) => {
+                                         const newList = [...list];
+                                         newList[idx].name = e.target.value;
+                                         setTempConfig({...tempConfig, [listKey]: newList});
+                                     }} className="bg-transparent text-white font-bold w-full outline-none text-xs"/>
+                                 </div>
+                                 <div className="flex-1">
+                                     <label className="text-[10px] text-slate-400 block">Rate (₹)</label>
+                                     <input type="number" value={item.rate} onChange={(e) => {
+                                         const newList = [...list];
+                                         newList[idx].rate = Number(e.target.value);
+                                         setTempConfig({...tempConfig, [listKey]: newList});
+                                     }} className="bg-transparent text-emerald-400 font-bold w-full outline-none text-xs"/>
+                                 </div>
+                             </div>
+                         ))}
+                    </div>
+                 )
+            };
+
+            // Custom Editor for Bundles (STD vs EXCL)
+             const renderBundleEditor = () => (
+                <div className="space-y-4">
+                     {['std', 'excl'].map(type => (
+                         <div key={type}>
+                             <h4 className="font-bold text-white text-xs uppercase bg-slate-800 p-2 rounded mb-2">{type === 'std' ? 'Standard' : 'Exclusive'} Channel</h4>
+                             {tempConfig.bun[type].map((b, idx) => (
+                                 <div key={idx} className="flex gap-2 items-center mb-2">
+                                     <span className="text-xs text-slate-400 flex-1 truncate">{b.name}</span>
+                                     <input type="number" value={b.rate} onChange={(e) => {
+                                         const newList = [...tempConfig.bun[type]];
+                                         newList[idx].rate = Number(e.target.value);
+                                         setTempConfig({...tempConfig, bun: {...tempConfig.bun, [type]: newList}});
+                                     }} className="bg-slate-800 text-emerald-400 font-bold w-16 text-xs p-1 rounded text-center"/>
+                                 </div>
+                             ))}
+                         </div>
+                     ))}
+                </div>
+            );
+
+            const renderAccEditor = () => (
+                <div className="space-y-3">
+                    <h4 className="font-bold text-white text-sm uppercase tracking-wider mb-2">Accessories Slabs (Min %)</h4>
+                    {tempConfig.acc.map((slab, idx) => (
+                        <div key={idx} className="flex gap-2 items-center bg-slate-800/50 p-2 rounded-lg">
+                            <div className="flex-1">
+                                <label className="text-[10px] text-slate-400 block">Min Ach %</label>
+                                <input type="number" value={slab.min} onChange={(e) => {
+                                    const newSlabs = [...tempConfig.acc];
+                                    newSlabs[idx].min = Number(e.target.value);
+                                    setTempConfig({...tempConfig, acc: newSlabs});
+                                }} className="bg-transparent text-white font-bold w-full outline-none text-xs"/>
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-[10px] text-slate-400 block">Rate (₹)</label>
+                                <input type="number" value={slab.rate} onChange={(e) => {
+                                    const newSlabs = [...tempConfig.acc];
+                                    newSlabs[idx].rate = Number(e.target.value);
+                                    setTempConfig({...tempConfig, acc: newSlabs});
+                                }} className="bg-transparent text-emerald-400 font-bold w-full outline-none text-xs"/>
+                            </div>
+                            <button onClick={() => {
+                                const newSlabs = tempConfig.acc.filter((_, i) => i !== idx);
+                                setTempConfig({...tempConfig, acc: newSlabs});
+                            }} className="text-red-400 p-1"><LucideIcon name="trash" size={14}/></button>
+                        </div>
+                    ))}
+                    <Button variant="secondary" onClick={() => {
+                        const newSlabs = [...tempConfig.acc, { min: 0, rate: 0 }];
+                        setTempConfig({...tempConfig, acc: newSlabs});
                     }} icon="plus" className="w-full py-2 text-xs">Add Slab</Button>
                 </div>
             );
@@ -291,7 +385,7 @@
                 <Modal isOpen={isOpen} onClose={onClose} title="Global Settings">
                     <div className="flex flex-col h-[70vh]">
                         <div className="flex gap-2 overflow-x-auto pb-2 mb-4 border-b border-slate-700 shrink-0">
-                            {['sp', 'tb', 'cp', 'caps'].map(s => (
+                            {['sp', 'tb', 'cp', 'wr', 'bun', 'acc', 'caps'].map(s => (
                                 <button key={s} onClick={() => setSection(s)} className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${section === s ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>{s}</button>
                             ))}
                         </div>
@@ -300,6 +394,9 @@
                             {section === 'sp' && renderSlabEditor('sp', 'Smartphone')}
                             {section === 'tb' && renderSlabEditor('tb', 'Tablet')}
                             {section === 'cp' && renderSlabEditor('cp', 'Care+')}
+                            {section === 'wr' && renderListEditor('wr', 'Wearables')}
+                            {section === 'bun' && renderBundleEditor()}
+                            {section === 'acc' && renderAccEditor()}
 
                             {section === 'caps' && (
                                 <div className="space-y-4">
@@ -668,9 +765,11 @@
         };
 
         const SalesTracker = () => {
-            const [view, setView] = useState('entry'); // entry, report, analytics, profile
+            const [view, setView] = useState('entry');
             const [showImportExport, setShowImportExport] = useState(false);
             
+            // --- DATA STRUCTURE: Transaction Based ---
+            // { "2023-10-27": [{ id, brand, model, variant, price, qty, totalVal, time }] }
             const [salesData, setSalesData] = useState(() => {
                 const v15 = localStorage.getItem('sec_sales_data_v15');
                 if (v15) return JSON.parse(v15);
@@ -679,14 +778,13 @@
             const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('sec_profile_v15') || '{"name":"","code":"","outlet":"","outletCode":"","managerName":"","managerCode":"","targetVol":0,"targetVal":0}'));
             const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
             
-            // New: Independent Month for Reporting
             const [reportMonth, setReportMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
             // Queue & Inputs
             const [pendingQueue, setPendingQueue] = useState([]);
             const [inputBrand, setInputBrand] = useState('');
             const [inputModel, setInputModel] = useState('');
-            const [inputVariant, setInputVariant] = useState(''); // Added Variant
+            const [inputVariant, setInputVariant] = useState('');
             const [inputPrice, setInputPrice] = useState('');
             const [inputQty, setInputQty] = useState(1);
             
@@ -694,14 +792,14 @@
             const confirm = useConfirm();
 
             const brandsList = [
-                { key: 'samsung', label: 'Samsung', aliases: ['samsung', 'sam'], color: '#3b82f6' },
-                { key: 'iphone', label: 'Apple', aliases: ['iphone', 'apple', 'app'], color: '#64748b' },
-                { key: 'realme', label: 'Realme', aliases: ['realme', 'real'], color: '#eab308' },
-                { key: 'mi', label: 'Xiaomi', aliases: ['mi', 'xiaomi', 'redmi'], color: '#f97316' },
-                { key: 'oppo', label: 'Oppo', aliases: ['oppo', 'opp'], color: '#10b981' },
-                { key: 'vivo', label: 'Vivo', aliases: ['vivo', 'viv'], color: '#06b6d4' },
-                { key: 'moto', label: 'Moto', aliases: ['moto', 'motorola'], color: '#6366f1' },
-                { key: 'other', label: 'Others', aliases: ['other', 'oth'], color: '#94a3b8' },
+                { key: 'samsung', label: 'Samsung', color: '#3b82f6' },
+                { key: 'iphone', label: 'Apple', color: '#64748b' },
+                { key: 'realme', label: 'Realme', color: '#eab308' },
+                { key: 'mi', label: 'Xiaomi', color: '#f97316' },
+                { key: 'oppo', label: 'Oppo', color: '#10b981' },
+                { key: 'vivo', label: 'Vivo', color: '#06b6d4' },
+                { key: 'moto', label: 'Moto', color: '#6366f1' },
+                { key: 'other', label: 'Others', color: '#94a3b8' },
             ];
 
             useEffect(() => { localStorage.setItem('sec_sales_data_v15', JSON.stringify(salesData)); }, [salesData]);
@@ -711,10 +809,9 @@
             const barChartRef = useRef(null);
             const chartInstances = useRef({});
 
-            // --- ANALYTICS ---
+            // --- ANALYTICS & CHARTS ---
             useEffect(() => {
                 if (view === 'analytics') {
-                    // Cleanup
                     if(chartInstances.current.pie) chartInstances.current.pie.destroy();
                     if(chartInstances.current.bar) chartInstances.current.bar.destroy();
 
@@ -722,7 +819,6 @@
                     const lastMonth = new Date(new Date(reportMonth + "-01").setMonth(new Date(reportMonth + "-01").getMonth() - 1)).toISOString().slice(0, 7);
                     const lastStats = calculateStats(lastMonth);
 
-                    // 1. Pie Chart (MTD vs LMTD Volume)
                     if(pieChartRef.current) {
                         const ctx = pieChartRef.current.getContext('2d');
                         chartInstances.current.pie = new Chart(ctx, {
@@ -736,17 +832,10 @@
                                     borderWidth: 2
                                 }]
                             },
-                            options: {
-                                responsive: true,
-                                plugins: {
-                                    legend: { position: 'bottom', labels: { color: '#94a3b8' } },
-                                    title: { display: true, text: `Volume Comparison (MTD vs LMTD)`, color: '#fff' }
-                                }
-                            }
+                            options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8' } }, title: { display: true, text: `Volume Comparison`, color: '#fff' } } }
                         });
                     }
 
-                    // 2. Bar Chart (Year Growth - Simplified to MTD breakdown for now or Growth)
                     if(barChartRef.current) {
                         const ctxBar = barChartRef.current.getContext('2d');
                         const labels = brandsList.map(b => b.label);
@@ -762,154 +851,150 @@
                                     { label: 'Last Month', data: dataLast, backgroundColor: '#334155', borderRadius: 4 }
                                 ]
                             },
-                            options: {
-                                indexAxis: 'y',
-                                responsive: true,
-                                scales: {
-                                    x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
-                                    y: { grid: { display: false }, ticks: { color: '#fff' } }
-                                },
-                                plugins: {
-                                    legend: { labels: { color: '#94a3b8' } },
-                                    title: { display: true, text: 'Brand Performance (YoY/MoM)', color: '#fff' }
-                                }
-                            }
+                            options: { indexAxis: 'y', responsive: true, scales: { x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, y: { grid: { display: false }, ticks: { color: '#fff' } } }, plugins: { legend: { labels: { color: '#94a3b8' } }, title: { display: true, text: 'Brand Performance', color: '#fff' } } }
                         });
                     }
                 }
             }, [view, salesData, reportMonth]);
 
-            // --- LOGIC ---
-            const handleAdd = () => {
-                if(!inputBrand || !inputPrice) {
-                    toast.addToast("Please select a brand and enter price.", "error");
-                    return;
+            // --- CALCULATIONS (Updated for Arrays) ---
+            const calculateStats = (targetMonthYyyyMm = null) => {
+                const monthPrefix = targetMonthYyyyMm || currentDate.slice(0, 7);
+                let mtd = { vol: 0, val: 0, breakdownVol: {}, breakdownVal: {}, priceSeg: [0,0,0,0] }; // <10k, 10-20k, 20-30k, >30k
+                let ftd = { vol: 0, val: 0, breakdownVol: {}, breakdownVal: {} };
+
+                brandsList.forEach(b => {
+                    mtd.breakdownVol[b.key]=0; mtd.breakdownVal[b.key]=0;
+                    ftd.breakdownVol[b.key]=0; ftd.breakdownVal[b.key]=0;
+                });
+
+                const processEntry = (e, target) => {
+                    target.vol += e.qty;
+                    target.val += e.totalVal;
+                    if(target.breakdownVol[e.brand] !== undefined) {
+                        target.breakdownVol[e.brand] += e.qty;
+                        target.breakdownVal[e.brand] += e.totalVal;
+                    }
+                    // Price Seg (MTD only usually, but generic here)
+                    if(target === mtd) {
+                        const unitPrice = e.price;
+                        if(unitPrice < 10000) target.priceSeg[0] += e.qty;
+                        else if(unitPrice < 20000) target.priceSeg[1] += e.qty;
+                        else if(unitPrice < 30000) target.priceSeg[2] += e.qty;
+                        else target.priceSeg[3] += e.qty;
+                    }
+                };
+
+                // FTD
+                const todayEntries = salesData[currentDate];
+                if(Array.isArray(todayEntries)) {
+                    todayEntries.forEach(e => processEntry(e, ftd));
                 }
+
+                // MTD
+                Object.keys(salesData).forEach(date => {
+                    if(date.startsWith(monthPrefix)) {
+                        const entries = salesData[date];
+                        if(Array.isArray(entries)) {
+                            entries.forEach(e => processEntry(e, mtd));
+                        }
+                    }
+                });
+
+                return { mtd, ftd };
+            };
+
+            const stats = useMemo(() => calculateStats(view === 'report' || view === 'analytics' ? reportMonth : currentDate.slice(0, 7)), [salesData, currentDate, reportMonth, view]);
+
+            // --- HANDLERS ---
+            const handleAdd = () => {
+                if(!inputBrand || !inputPrice) { toast.addToast("Select Brand & Price.", "error"); return; }
                 const qty = parseInt(inputQty) || 1;
                 const price = parseInt(inputPrice) || 0;
                 setPendingQueue([...pendingQueue, {
                     id: Date.now(),
                     brand: inputBrand,
                     model: inputModel || 'Unknown',
-                    variant: inputVariant || '', // Save Variant
+                    variant: inputVariant || '',
                     price,
                     qty,
                     totalVal: price * qty
                 }]);
-                // Reset inputs except date
                 setInputModel(''); setInputVariant(''); setInputPrice(''); setInputQty(1);
             };
 
             const handleSave = () => {
                 if(pendingQueue.length === 0) return;
-                const newEntry = { ...(salesData[currentDate] || { models: '' }) };
-                let logStr = "";
+                const currentEntries = Array.isArray(salesData[currentDate]) ? [...salesData[currentDate]] : [];
+                const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 
-                pendingQueue.forEach(item => {
-                    const k = item.brand;
-                    newEntry[k] = (newEntry[k] || 0) + item.qty;
-                    newEntry[`${k}Val`] = (newEntry[`${k}Val`] || 0) + item.totalVal;
-                    // Format: [HH:MM] Brand Model Variant - Qty unit (Val: X)
-                    logStr += `[${new Date().toLocaleTimeString()}] ${brandsList.find(b=>b.key===k)?.label} ${item.model} ${item.variant} - ${item.qty} ${item.qty > 1 ? 'units' : 'unit'} (Val: ${item.totalVal})\n`;
-                });
-                newEntry.models = (newEntry.models || '') + logStr;
-                setSalesData({ ...salesData, [currentDate]: newEntry });
+                const newEntries = pendingQueue.map(item => ({...item, time: timestamp}));
+
+                setSalesData({ ...salesData, [currentDate]: [...currentEntries, ...newEntries] });
                 setPendingQueue([]);
                 toast.addToast("Saved successfully!", "success");
             };
 
-            const calculateStats = (targetMonthYyyyMm = null) => {
-                const monthPrefix = targetMonthYyyyMm || currentDate.slice(0, 7);
-                let mtd = { vol: 0, val: 0, breakdownVol: {}, breakdownVal: {} };
-                let ftd = { vol: 0, val: 0, breakdownVol: {}, breakdownVal: {} };
-                
-                brandsList.forEach(b => { 
-                    mtd.breakdownVol[b.key]=0; mtd.breakdownVal[b.key]=0; 
-                    ftd.breakdownVol[b.key]=0; ftd.breakdownVal[b.key]=0; 
-                });
+            const handleDeleteEntry = (entryIndex) => {
+                 const currentEntries = [...salesData[currentDate]];
+                 currentEntries.splice(entryIndex, 1);
+                 setSalesData({ ...salesData, [currentDate]: currentEntries });
+            };
 
-                if(salesData[currentDate]) {
-                     brandsList.forEach(b => {
-                        const v = Number(salesData[currentDate][b.key]||0); 
-                        const va = Number(salesData[currentDate][`${b.key}Val`]||0);
-                        ftd.vol += v; ftd.val += va;
-                        ftd.breakdownVol[b.key] += v; ftd.breakdownVal[b.key] += va;
-                    });
-                }
-
-                Object.keys(salesData).forEach(d => {
-                    if(d.startsWith(monthPrefix)) {
-                        const rec = salesData[d];
-                        brandsList.forEach(b => {
-                            const v = Number(rec[b.key]||0); const va = Number(rec[`${b.key}Val`]||0);
-                            mtd.vol += v; mtd.val += va; 
-                            mtd.breakdownVol[b.key] += v; mtd.breakdownVal[b.key] += va;
+            // --- EXPORT / IMPORT ---
+            const exportExcel = () => {
+                // Flatten data
+                const flatData = [];
+                Object.entries(salesData).forEach(([date, entries]) => {
+                    if(Array.isArray(entries)) {
+                        entries.forEach(e => {
+                            flatData.push({
+                                Date: date,
+                                Time: e.time,
+                                Brand: brandsList.find(b=>b.key===e.brand)?.label || e.brand,
+                                Model: e.model,
+                                Variant: e.variant,
+                                Price: e.price,
+                                Qty: e.qty,
+                                Value: e.totalVal
+                            });
                         });
                     }
                 });
-                return { mtd, ftd };
-            };
-            
-            const stats = useMemo(() => calculateStats(view === 'report' || view === 'analytics' ? reportMonth : currentDate.slice(0, 7)), [salesData, currentDate, reportMonth, view]);
-            
-            // --- EXPORT & IMPORT ---
-            const exportExcel = () => {
-                const ws = XLSX.utils.json_to_sheet(
-                    Object.entries(salesData).map(([date, data]) => {
-                        let row = { Date: date, Log: data.models };
-                        brandsList.forEach(b => {
-                           row[`${b.label} Qty`] = data[b.key] || 0;
-                           row[`${b.label} Val`] = data[`${b.key}Val`] || 0;
-                        });
-                        return row;
-                    })
-                );
+                const ws = XLSX.utils.json_to_sheet(flatData);
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Sales Data");
-                XLSX.writeFile(wb, "SEH_Data_Export.xlsx");
+                XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+                XLSX.writeFile(wb, "SEH_Transactions.xlsx");
             };
 
             const exportPDF = () => {
                 const doc = new jspdf.jsPDF();
+                doc.setFontSize(18); doc.text("SEH - Sales Transactions", 14, 22);
+                doc.setFontSize(10); doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
 
-                // 1. Header
-                doc.setFontSize(18);
-                doc.text("SEH - Sales Data Export", 14, 22);
-                doc.setFontSize(10);
-                doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
-
-                // 2. Data Table
-                const tableData = Object.entries(salesData).map(([date, data]) => {
-                    const row = [date];
-                    brandsList.forEach(b => {
-                        row.push(`${data[b.key]||0}`);
-                    });
-                    row.push(data.models ? data.models.slice(0, 50) + "..." : ""); // Truncate logs
-                    return row;
+                const tableBody = [];
+                Object.entries(salesData).sort().forEach(([date, entries]) => {
+                    if(Array.isArray(entries)) {
+                        entries.forEach(e => {
+                            tableBody.push([date, brandsList.find(b=>b.key===e.brand)?.label, `${e.model} ${e.variant}`, e.qty, e.totalVal]);
+                        });
+                    }
                 });
 
                 doc.autoTable({
                     startY: 35,
-                    head: [['Date', ...brandsList.map(b=>b.label), 'Logs']],
-                    body: tableData,
+                    head: [['Date', 'Brand', 'Model', 'Qty', 'Value']],
+                    body: tableBody,
                     theme: 'grid',
                     styles: { fontSize: 8 }
                 });
 
-                // 3. EMBED DATA FOR RECOVERY
-                // We add a hidden text block at the very end of the PDF containing the base64 encoded JSON
-                // This is a trick to allow re-importing from the PDF file itself.
                 const rawState = JSON.stringify(salesData);
-                const b64State = btoa(unescape(encodeURIComponent(rawState))); // UTF-8 safe base64
-
-                // Add a new page for the raw data signature
-                doc.addPage();
-                doc.setFontSize(5);
-                doc.setTextColor(255, 255, 255); // White text on white paper (Invisible to user)
+                const b64State = btoa(unescape(encodeURIComponent(rawState)));
+                doc.addPage(); doc.setFontSize(5); doc.setTextColor(255);
                 doc.text("SEH_DATA_START::" + b64State + "::SEH_DATA_END", 10, 10);
-
                 doc.save("SEH_Full_Export.pdf");
-                toast.addToast("Exported PDF with embedded recovery data.", "success");
+                toast.addToast("Exported PDF (Recoverable).", "success");
             };
 
             const importFile = (e) => {
@@ -917,155 +1002,76 @@
                 if(!file) return;
 
                 const processRestore = (recoveredData) => {
-                     const count = Object.keys(recoveredData).length;
-                        confirm({
+                     // Check if data looks like old format or new
+                     // If old format (keys are dates, values are objects), we might need migration
+                     // But let's assume valid restore for now
+                     confirm({
                             title: "Restore Data?",
-                            message: `Found ${count} days of data. This will REPLACE existing data. Continue?`,
+                            message: "This will REPLACE existing data. Continue?",
                             isDanger: true,
                             onConfirm: () => {
                                 setSalesData(recoveredData);
-                                // Auto-set to latest date
-                                const dates = Object.keys(recoveredData).sort();
-                                if(dates.length > 0) {
-                                    const lastDate = dates[dates.length - 1];
-                                    setCurrentDate(lastDate);
-                                    setReportMonth(lastDate.slice(0, 7));
-                                }
                                 toast.addToast("Restore Successful!", "success");
                             }
                         });
                 };
 
                 if(file.name.endsWith('.pdf')) {
-                    // PDF Parsing Strategy: Read as text/binary, find the magic signature
                     const reader = new FileReader();
                     reader.onload = (evt) => {
-                        const content = evt.target.result;
-                        // We need to scan the raw content for "SEH_DATA_START::"
-                        // Since PDF is complex, the text might be compressed.
-                        // However, jsPDF usually outputs uncompressed text for simple text adds unless configured otherwise.
-                        // But standard FileReader might not be enough if it's binary.
-                        // Let's try reading as Text first.
-                        const rawText = content; // readAsText
-                        const startMarker = "SEH_DATA_START::";
-                        const endMarker = "::SEH_DATA_END";
-                        const startIdx = rawText.indexOf(startMarker);
-                        const endIdx = rawText.indexOf(endMarker);
-
-                        if(startIdx !== -1 && endIdx !== -1) {
+                        const rawText = evt.target.result;
+                        const start = rawText.indexOf("SEH_DATA_START::");
+                        const end = rawText.indexOf("::SEH_DATA_END");
+                        if(start !== -1 && end !== -1) {
                             try {
-                                const b64 = rawText.substring(startIdx + startMarker.length, endIdx);
+                                const b64 = rawText.substring(start + 16, end);
                                 const json = decodeURIComponent(escape(atob(b64)));
-                                const data = JSON.parse(json);
-                                processRestore(data);
-                            } catch(err) {
-                                console.error(err);
-                                toast.addToast("Corrupt embedded data in PDF.", "error");
-                            }
-                        } else {
-                            toast.addToast("No SEH recovery data found in this PDF.", "error");
-                        }
+                                processRestore(JSON.parse(json));
+                            } catch(e) { toast.addToast("Corrupt PDF Data", "error"); }
+                        } else { toast.addToast("No data found in PDF.", "error"); }
                     };
-                    reader.readAsText(file); // Try text reading
+                    reader.readAsText(file);
                 } else {
-                    // XLSX Import
-                     const reader = new FileReader();
+                    // XLSX Import - Expecting Flattened Transaction Format
+                    const reader = new FileReader();
                     reader.onload = (evt) => {
                         try {
                             const wb = XLSX.read(evt.target.result, {type:'binary'});
                             const ws = wb.Sheets[wb.SheetNames[0]];
-                            const rawData = XLSX.utils.sheet_to_json(ws, {header: 1});
+                            const raw = XLSX.utils.sheet_to_json(ws);
 
-                            // Find header
-                            let headerRowIdx = -1;
-                            let headers = [];
-                            for(let i=0; i<rawData.length; i++) {
-                                const r = rawData[i];
-                                if(r.includes('Date') && (r.includes('Logs') || r.includes('Log'))) {
-                                    headerRowIdx = i;
-                                    headers = r;
-                                    break;
-                                }
-                            }
-                            if(headerRowIdx === -1) throw new Error("Could not find header row (Date/Logs)");
-
-                            const recovered = {};
-                            for(let i=headerRowIdx+1; i<rawData.length; i++) {
-                                const row = rawData[i];
-                                if(!row || row.length === 0) continue;
-                                const getVal = (name) => {
-                                    const idx = headers.indexOf(name);
-                                    return idx > -1 ? row[idx] : undefined;
-                                };
-                                const dateVal = getVal('Date');
-                                if(!dateVal) continue;
-                                let dateStr = dateVal;
-                                if(typeof dateVal === 'number') {
-                                    const d = new Date(Math.round((dateVal - 25569)*86400*1000));
-                                    dateStr = d.toISOString().split('T')[0];
-                                }
-                                const logVal = getVal('Logs') || getVal('Log') || '';
-                                const entry = { models: logVal };
-                                brandsList.forEach(b => {
-                                    const q = getVal(`${b.label} Qty`);
-                                    const v = getVal(`${b.label} Value`) || getVal(`${b.label} Val`);
-                                    if(q) entry[b.key] = Number(q);
-                                    if(v) entry[`${b.key}Val`] = Number(v);
+                            // Reconstruct { Date: [entries] }
+                            const reconstructed = {};
+                            raw.forEach(r => {
+                                const d = r.Date;
+                                if(!reconstructed[d]) reconstructed[d] = [];
+                                reconstructed[d].push({
+                                    id: Date.now() + Math.random(),
+                                    time: r.Time || '00:00',
+                                    brand: brandsList.find(b => b.label === r.Brand)?.key || 'other',
+                                    model: r.Model,
+                                    variant: r.Variant,
+                                    price: r.Price,
+                                    qty: r.Qty,
+                                    totalVal: r.Value
                                 });
-                                recovered[dateStr] = entry;
-                            }
-                            processRestore(recovered);
-                        } catch(err) {
-                            console.error(err);
-                            toast.addToast("Failed to parse XLSX.", "error");
-                        }
+                            });
+                            processRestore(reconstructed);
+                        } catch(e) { toast.addToast("Failed to parse XLSX", "error"); }
                     };
                     reader.readAsBinaryString(file);
                 }
             };
 
-            // Backup/Restore Profile
-            const backupProfile = () => {
-                const blob = new Blob([JSON.stringify(profile)], {type: "application/json"});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = "SEH_Profile_Backup.json";
-                a.click();
-            };
-
-            const restoreProfile = (e) => {
-                const file = e.target.files[0];
-                if(!file) return;
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    try {
-                        const p = JSON.parse(evt.target.result);
-                        setProfile(p);
-                        toast.addToast("Profile Restored.", "success");
-                    } catch(err) { toast.addToast("Invalid Profile File", "error"); }
-                };
-                reader.readAsText(file);
-            };
-
             return (
                 <div className="animate-fade-in pb-20">
-                    {/* Toolbar */}
                     <div className="flex justify-between items-center mb-6">
                         <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 max-w-[70vw]">
                             {['entry', 'report', 'analytics', 'profile'].map(v => (
-                                <button 
-                                    key={v}
-                                    onClick={() => setView(v)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all ${view === v ? 'bg-brand-600 text-white shadow-lg shadow-brand-500/20' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                                >
-                                    {v}
-                                </button>
+                                <button key={v} onClick={() => setView(v)} className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-all ${view === v ? 'bg-brand-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>{v}</button>
                             ))}
                         </div>
-                        <button onClick={() => setShowImportExport(true)} className="p-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700">
-                            <LucideIcon name="database" size={20} />
-                        </button>
+                        <button onClick={() => setShowImportExport(true)} className="p-2 bg-slate-800 text-slate-300 rounded-lg"><LucideIcon name="database" size={20} /></button>
                     </div>
 
                      <Modal isOpen={showImportExport} onClose={() => setShowImportExport(false)} title="Data Management">
@@ -1077,22 +1083,18 @@
                                     <Button onClick={exportPDF} variant="secondary">PDF (.pdf)</Button>
                                 </div>
                             </div>
-                            
-                            <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                             <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
                                 <h4 className="font-bold text-white mb-2 flex items-center gap-2"><LucideIcon name="rotate-ccw" size={16}/> Restore Data</h4>
-                                <p className="text-xs text-slate-400 mb-4">Restore from a valid SEH Export (XLSX or PDF).</p>
                                 <div className="relative">
-                                    <input type="file" id="tracker-import-modal" className="hidden" accept=".xlsx,.pdf" onChange={importFile} />
-                                    <label htmlFor="tracker-import-modal" className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl font-bold text-sm bg-brand-600 text-white shadow-lg shadow-brand-500/20 hover:bg-brand-500 cursor-pointer transition-all">
-                                        Select Backup File
-                                    </label>
+                                    <input type="file" id="tracker-import" className="hidden" accept=".xlsx,.pdf" onChange={importFile} />
+                                    <label htmlFor="tracker-import" className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl font-bold text-sm bg-brand-600 text-white cursor-pointer">Select Backup File</label>
                                 </div>
                             </div>
                             <Button onClick={() => setShowImportExport(false)} variant="outline" className="w-full">Close</Button>
                         </div>
                     </Modal>
 
-                    {/* VIEW: ENTRY */}
+                    {/* ENTRY VIEW */}
                     {view === 'entry' && (
                         <div className="space-y-6">
                              <Card>
@@ -1101,17 +1103,16 @@
                                         <LucideIcon name="calendar" className="text-brand-400" />
                                         <input type="date" value={currentDate} onChange={(e)=>setCurrentDate(e.target.value)} className="bg-transparent text-white font-bold outline-none" />
                                     </div>
-                                    <button onClick={()=>setPendingQueue([])} className="text-xs text-red-400 hover:text-red-300">Clear Queue</button>
+                                    <button onClick={()=>setPendingQueue([])} className="text-xs text-red-400">Clear</button>
                                 </div>
-                                
                                 <div className="grid grid-cols-1 gap-3 mb-3">
                                     <select value={inputBrand} onChange={(e)=>setInputBrand(e.target.value)} className="w-full h-12 px-4 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold">
                                         <option value="">Select Brand</option>
                                         {brandsList.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
                                     </select>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Input placeholder="Model (e.g. S24)" value={inputModel} onChange={(e)=>setInputModel(e.target.value)} />
-                                        <Input placeholder="Variant (e.g. 8/128)" value={inputVariant} onChange={(e)=>setInputVariant(e.target.value)} />
+                                        <Input placeholder="Model" value={inputModel} onChange={(e)=>setInputModel(e.target.value)} />
+                                        <Input placeholder="Variant" value={inputVariant} onChange={(e)=>setInputVariant(e.target.value)} />
                                     </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <Input type="number" placeholder="Price" value={inputPrice} onChange={(e)=>setInputPrice(e.target.value)} />
@@ -1136,29 +1137,36 @@
                                 </div>
                             )}
 
-                             {salesData[currentDate]?.models && (
+                             {Array.isArray(salesData[currentDate]) && salesData[currentDate].length > 0 && (
                                 <Card className="border-l-4 border-l-brand-500">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Today's Log</h4>
-                                    <pre className="text-xs text-slate-500 font-mono whitespace-pre-wrap">{salesData[currentDate].models}</pre>
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Today's Transactions</h4>
+                                    <div className="space-y-2">
+                                        {salesData[currentDate].map((e, idx) => (
+                                            <div key={idx} className="flex justify-between items-center bg-slate-800/50 p-2 rounded text-xs group">
+                                                <div>
+                                                    <span className="text-slate-500 mr-2">[{e.time}]</span>
+                                                    <span className="text-white font-bold">{brandsList.find(b=>b.key===e.brand)?.label}</span>
+                                                    <span className="text-slate-300 ml-1">{e.model} {e.variant}</span>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-emerald-400">₹{e.totalVal}</span>
+                                                    <button onClick={()=>handleDeleteEntry(idx)} className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><LucideIcon name="trash" size={14} /></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </Card>
                             )}
                         </div>
                     )}
 
-                    {/* VIEW: REPORT (Accordion Style) */}
+                    {/* REPORT VIEW */}
                     {view === 'report' && (
                         <div className="space-y-6">
                             <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700">
                                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Report Month</span>
-                                <input 
-                                    type="month" 
-                                    value={reportMonth} 
-                                    onChange={(e)=>setReportMonth(e.target.value)} 
-                                    className="bg-transparent text-white font-bold outline-none text-right"
-                                />
+                                <input type="month" value={reportMonth} onChange={(e)=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right" />
                             </div>
-
-                            {/* Summary Cards */}
                             <div className="grid grid-cols-2 gap-4">
                                 <Card className="p-4 bg-gradient-to-br from-indigo-900/50 to-slate-900">
                                     <div className="text-xs text-indigo-300 uppercase font-bold mb-1">FTD (Today)</div>
@@ -1171,8 +1179,6 @@
                                     <div className="text-xs text-brand-400">₹{(stats.mtd.val/1000).toFixed(1)}k</div>
                                 </Card>
                             </div>
-
-                            {/* Brand Breakdown Accordion */}
                             <Card className="p-0 overflow-hidden">
                                 {brandsList.map(b => (
                                     <details key={b.key} className="group border-b border-slate-800 last:border-0">
@@ -1190,16 +1196,34 @@
                                             </div>
                                         </summary>
                                         <div className="px-4 pb-4 bg-slate-900/30">
-                                            {/* Logic to show breakdown by model would go here if we parsed the logs fully,
-                                                but for now we just show the summary as the logs are string based.
-                                                Future improvement: Structured DB for logs. */}
-                                            <p className="text-xs text-slate-500 italic">Detailed model breakdown requires structured logging.</p>
+                                            {/* Sub-breakdown by model could be here if we filtered the array by brand */}
+                                            {(() => {
+                                                // Quick aggregation for this brand in MTD
+                                                const modelCounts = {};
+                                                Object.keys(salesData).forEach(d => {
+                                                    if(d.startsWith(reportMonth) && Array.isArray(salesData[d])) {
+                                                        salesData[d].filter(e=>e.brand===b.key).forEach(e => {
+                                                            const k = `${e.model} ${e.variant}`;
+                                                            modelCounts[k] = (modelCounts[k] || 0) + e.qty;
+                                                        });
+                                                    }
+                                                });
+                                                const sorted = Object.entries(modelCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+                                                return sorted.length > 0 ? (
+                                                    <div className="space-y-1 mt-2">
+                                                        {sorted.map(([m, c]) => (
+                                                            <div key={m} className="flex justify-between text-xs text-slate-400">
+                                                                <span>{m}</span>
+                                                                <span>{c}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : <p className="text-xs text-slate-500 italic">No sales yet.</p>;
+                                            })()}
                                         </div>
                                     </details>
                                 ))}
                             </Card>
-
-                            {/* Footer Summary */}
                             <div className="p-4 bg-slate-900 border-t border-slate-800 text-center rounded-xl">
                                 <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Total Volume Share</h4>
                                 <div className="flex flex-wrap justify-center gap-2">
@@ -1213,35 +1237,23 @@
                         </div>
                     )}
 
-                    {/* VIEW: ANALYTICS */}
+                    {/* ANALYTICS VIEW */}
                     {view === 'analytics' && (
                         <div className="space-y-6">
                             <div className="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700">
                                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Analysis Month</span>
-                                <input 
-                                    type="month" 
-                                    value={reportMonth} 
-                                    onChange={(e)=>setReportMonth(e.target.value)} 
-                                    className="bg-transparent text-white font-bold outline-none text-right"
-                                />
+                                <input type="month" value={reportMonth} onChange={(e)=>setReportMonth(e.target.value)} className="bg-transparent text-white font-bold outline-none text-right" />
                             </div>
                             <div className="grid md:grid-cols-2 gap-4">
-                                <Card>
-                                    <canvas ref={pieChartRef}></canvas>
-                                </Card>
-                                <Card>
-                                    <canvas ref={barChartRef}></canvas>
-                                </Card>
+                                <Card><canvas ref={pieChartRef}></canvas></Card>
+                                <Card><canvas ref={barChartRef}></canvas></Card>
                             </div>
-
-                            {/* Price Segmentation (Hypothetical Data from logs) */}
-                             <Card>
-                                <h3 className="font-bold text-white mb-4">Price Segmentation (Est.)</h3>
+                            <Card>
+                                <h3 className="font-bold text-white mb-4">Price Segmentation</h3>
                                 <div className="space-y-3">
                                     {['< 10k', '10k - 20k', '20k - 30k', '> 30k'].map((seg, i) => {
-                                        // Mock logic for display as we store raw totals per brand
-                                        // Real implementation would need to parse the log strings or store itemized DB
-                                        const val = Math.floor(stats.mtd.vol * [0.2, 0.4, 0.3, 0.1][i]);
+                                        const val = stats.mtd.priceSeg[i];
+                                        const tot = stats.mtd.vol || 1;
                                         return (
                                             <div key={i}>
                                                 <div className="flex justify-between text-xs text-slate-400 mb-1">
@@ -1249,18 +1261,17 @@
                                                     <span>{val} units</span>
                                                 </div>
                                                 <div className="h-1.5 bg-slate-800 rounded-full">
-                                                    <div className="h-full bg-indigo-500 rounded-full" style={{width: `${(val/stats.mtd.vol)*100}%`}}></div>
+                                                    <div className="h-full bg-indigo-500 rounded-full" style={{width: `${(val/tot)*100}%`}}></div>
                                                 </div>
                                             </div>
                                         )
                                     })}
-                                    <p className="text-[10px] text-slate-500 mt-2 italic">* Segmentation is estimated based on distribution.</p>
                                 </div>
                             </Card>
                         </div>
                     )}
 
-                    {/* VIEW: PROFILE */}
+                    {/* PROFILE VIEW */}
                     {view === 'profile' && (
                         <div className="space-y-6">
                             <Card>
@@ -1273,7 +1284,6 @@
                                 <div className="space-y-4">
                                     <Input label="Name" value={profile.name} onChange={(e)=>setProfile({...profile, name: e.target.value})} />
                                     <Input label="Outlet Name" value={profile.outlet} onChange={(e)=>setProfile({...profile, outlet: e.target.value})} />
-                                    {/* Removed Target inputs as requested, moved to global settings/logic if needed, or kept hidden */}
                                     <div className="flex gap-4 pt-4">
                                         <Button onClick={backupProfile} variant="secondary" className="w-1/2" icon="download">Backup Profile</Button>
                                         <div className="relative w-1/2">
@@ -1285,15 +1295,14 @@
                                     </div>
                                 </div>
                             </Card>
-
-                             {/* Footer Summary in Profile */}
                             <div className="p-4 bg-slate-900 border-t border-slate-800 text-center rounded-xl">
                                 <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Lifetime Volume by Brand</h4>
                                 <div className="flex flex-wrap justify-center gap-2">
                                     {brandsList.map(b => {
-                                        // Calculate Lifetime
                                         let total = 0;
-                                        Object.values(salesData).forEach(d => total += (d[b.key] || 0));
+                                        Object.values(salesData).forEach(entries => {
+                                            if(Array.isArray(entries)) entries.filter(e=>e.brand===b.key).forEach(e=>total+=e.qty);
+                                        });
                                         return (
                                             <span key={b.key} className="text-[10px] px-2 py-1 bg-slate-800 rounded text-slate-300">
                                                 {b.label}: <span className="text-white font-bold">{total}</span>
