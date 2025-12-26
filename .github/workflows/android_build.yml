@@ -1,38 +1,26 @@
-setup-android-foundation-2217574197063897701
-name: Android Build Force
+name: Android Build Final
 
 on:
-  workflow_dispatch:      # This creates a "Run Workflow" button
+  workflow_dispatch:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-
-name: Android Build Manual
-
-on:
-  workflow_dispatch: 
-  push:
-    branches: [ "main", "master" ]
-main
+    branches: [ "main" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug --stacktrace
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug --stacktrace
