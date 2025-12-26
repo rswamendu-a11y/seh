@@ -1,10 +1,11 @@
-name: Android Build
+name: Android Build Force
 
 on:
+  workflow_dispatch:      # This creates a "Run Workflow" button
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
   build:
