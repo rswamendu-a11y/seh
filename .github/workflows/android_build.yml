@@ -1,3 +1,4 @@
+setup-android-foundation-2217574197063897701
 name: Android Build Force
 
 on:
@@ -6,6 +7,14 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+
+name: Android Build Manual
+
+on:
+  workflow_dispatch: 
+  push:
+    branches: [ "main", "master" ]
+main
 
 jobs:
   build:
