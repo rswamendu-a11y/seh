@@ -4,9 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,8 +63,16 @@ fun NumberInputRow(label: String, value: Int, onValueChange: (Int) -> Unit) {
 fun CounterRow(label: String, count: Int, onCountChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f))
-        IconButton(onClick = { if (count > 0) onCountChange(count - 1) }) { Icon(Icons.Default.Remove, "") }
-        Text(count.toString())
-        IconButton(onClick = { onCountChange(count + 1) }) { Icon(Icons.Default.Add, "") }
+
+        // REPLACED ICONS WITH TEXT BUTTONS
+        Button(onClick = { if (count > 0) onCountChange(count - 1) }) { Text("-") }
+
+        Text(
+            text = count.toString(),
+            modifier = Modifier.padding(horizontal = 16.dp),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Button(onClick = { onCountChange(count + 1) }) { Text("+") }
     }
 }
